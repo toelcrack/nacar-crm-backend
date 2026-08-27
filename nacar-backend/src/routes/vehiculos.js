@@ -43,15 +43,12 @@ router.post('/', async (req, res) => {
   const { patente, marca, modelo, anio, combustible, clienteNombre, clienteCorreo } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
-  if (!clienteNombre || !String(clienteNombre).trim()) {
-    return res.status(400).json({ error: 'El nombre del cliente es obligatorio.' });
-  }
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
   try {
     const r = await pool.query(
       `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, cliente_nombre, cliente_correo, creado_por)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, clienteNombre, clienteCorreo || '', req.usuario.id]
+      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (clienteNombre || '').trim(), clienteCorreo || '', req.usuario.id]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
