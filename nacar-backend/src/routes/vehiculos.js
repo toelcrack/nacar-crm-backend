@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth, requireAdmin } = require('../auth');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -76,6 +76,41 @@ router.get('/:id', async (req, res) => {
     [id]
   );
   res.json({ vehiculo: v.rows[0], mantenciones: m.rows });
+});
+
+// PUT /api/vehiculos/:id  -> editar datos del vehículo (solo administrador)
+router.put('/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { patente, marca, modelo, anio, combustible, clienteNombre, clienteCorreo } = req.body || {};
+  const patenteLimpia = String(patente || '').trim().toUpperCase();
+  if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
+  const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
+  try {
+    const r = await pool.query(
+      `UPDATE vehiculos SET
+         patente=$1, marca=$2, modelo=$3, anio=$4, combustible=$5, cliente_nombre=$6, cliente_correo=$7
+       WHERE id=$8
+       RETURNING *`,
+      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (clienteNombre || '').trim(), clienteCorreo || '', id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    if (e.code === '23505') {
+      return res.status(409).json({ error: 'Esa patente ya está registrada en otro vehículo.' });
+    }
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo actualizar el vehículo.' });
+  }
+});
+
+// DELETE /api/vehiculos/:id  -> eliminar vehículo y todo su historial de mantenciones (solo administrador)
+router.delete('/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const r = await pool.query('DELETE FROM vehiculos WHERE id=$1 RETURNING id', [id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
+  res.json({ ok: true });
 });
 
 // POST /api/vehiculos/:id/mantenciones  -> agregar mantencion al historial (cualquier usuario autenticado)
