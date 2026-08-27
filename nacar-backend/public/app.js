@@ -177,7 +177,16 @@
       ? '<ul class="historial">' + data.mantenciones.map(function (m) { return renderMant(m, v.combustible); }).join('') + '</ul>'
       : '<p class="sin-mant">Sin mantenciones registradas todavía.</p>';
 
+    var accionesVehiculo = usuarioActual.rol === 'admin'
+      ? '<div class="mant-acciones">' +
+          '<button class="btn-texto" id="btn-editar-vehiculo-' + id + '" type="button">Editar datos del vehículo</button>' +
+          '<button class="btn-texto" id="btn-eliminar-vehiculo-' + id + '" type="button">Eliminar vehículo</button>' +
+        '</div>' +
+        '<div id="form-vehiculo-editar-' + id + '" class="panel" style="margin-top:10px" hidden>' + formVehiculoEditHtml(id, v) + '</div>'
+      : '';
+
     cont.innerHTML =
+      accionesVehiculo +
       '<div class="historial-label">Historial de mantenciones</div>' +
       historial +
       '<div style="margin-top:14px">' +
@@ -197,7 +206,75 @@
       cont.querySelectorAll('.btn-eliminar-mant').forEach(function (b) {
         b.onclick = function () { eliminarMantencion(id, Number(b.getAttribute('data-m')), b); };
       });
+      document.getElementById('btn-editar-vehiculo-' + id).onclick = function () {
+        var f = document.getElementById('form-vehiculo-editar-' + id);
+        f.hidden = !f.hidden;
+        if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      };
+      document.getElementById('btn-guardar-vehiculo-editar-' + id).onclick = function () { guardarVehiculoEditado(id); };
+      document.getElementById('btn-cancelar-vehiculo-editar-' + id).onclick = function () {
+        document.getElementById('form-vehiculo-editar-' + id).hidden = true;
+      };
+      document.getElementById('btn-eliminar-vehiculo-' + id).onclick = function (e) { eliminarVehiculo(id, e.currentTarget); };
     }
+  }
+
+  function formVehiculoEditHtml(vId, v) {
+    return (
+      '<div class="grid-3">' +
+        '<div class="campo"><label>Patente</label><input id="fv-patente-' + vId + '" type="text" value="' + escapeHtml(v.patente) + '" /></div>' +
+        '<div class="campo"><label>Marca</label><input id="fv-marca-' + vId + '" type="text" value="' + escapeHtml(v.marca || '') + '" /></div>' +
+        '<div class="campo"><label>Modelo</label><input id="fv-modelo-' + vId + '" type="text" value="' + escapeHtml(v.modelo || '') + '" /></div>' +
+      '</div>' +
+      '<div class="grid-3">' +
+        '<div class="campo"><label>Año</label><input id="fv-anio-' + vId + '" type="text" value="' + escapeHtml(v.anio || '') + '" /></div>' +
+        '<div class="campo"><label>Combustible</label><select id="fv-combustible-' + vId + '">' +
+          '<option value="bencina"' + (v.combustible !== 'diesel' ? ' selected' : '') + '>Bencina</option>' +
+          '<option value="diesel"' + (v.combustible === 'diesel' ? ' selected' : '') + '>Petróleo (diésel)</option>' +
+        '</select></div>' +
+      '</div>' +
+      '<div class="grid-2">' +
+        '<div class="campo"><label>Nombre cliente (opcional)</label><input id="fv-cliente-' + vId + '" type="text" value="' + escapeHtml(v.cliente_nombre || '') + '" /></div>' +
+        '<div class="campo"><label>Correo</label><input id="fv-correo-' + vId + '" type="email" value="' + escapeHtml(v.cliente_correo || '') + '" /></div>' +
+      '</div>' +
+      '<div class="acciones-form">' +
+        '<button class="btn btn-primario" id="btn-guardar-vehiculo-editar-' + vId + '" type="button">Guardar cambios</button>' +
+        '<button class="btn-texto" id="btn-cancelar-vehiculo-editar-' + vId + '" type="button">Cancelar</button>' +
+      '</div>'
+    );
+  }
+
+  function guardarVehiculoEditado(vId) {
+    var body = {
+      patente: document.getElementById('fv-patente-' + vId).value.trim().toUpperCase(),
+      marca: document.getElementById('fv-marca-' + vId).value.trim(),
+      modelo: document.getElementById('fv-modelo-' + vId).value.trim(),
+      anio: document.getElementById('fv-anio-' + vId).value.trim(),
+      combustible: document.getElementById('fv-combustible-' + vId).value,
+      clienteNombre: document.getElementById('fv-cliente-' + vId).value.trim(),
+      clienteCorreo: document.getElementById('fv-correo-' + vId).value.trim(),
+    };
+    api('/vehiculos/' + vId, { method: 'PUT', body: body }).then(function () {
+      delete detalleCache[vId];
+      avisar('Vehículo actualizado.');
+      return api('/vehiculos/' + vId).then(function (data) { detalleCache[vId] = data; pintarDetalle(vId); return cargarVehiculos(); });
+    }).catch(function (e) { avisar(e.message || 'No se pudo actualizar el vehículo.', true); });
+  }
+
+  function eliminarVehiculo(vId, btn) {
+    if (btn.getAttribute('data-confirmar') !== '1') {
+      btn.setAttribute('data-confirmar', '1');
+      btn.textContent = '¿Seguro? Se borra todo su historial. Sí, eliminar';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = 'Eliminar vehículo'; }, 4000);
+      return;
+    }
+    api('/vehiculos/' + vId, { method: 'DELETE' }).then(function () {
+      delete detalleCache[vId];
+      if (abiertoId === vId) abiertoId = null;
+      avisar('Vehículo eliminado.');
+      cargarVehiculos();
+    }).catch(function (e) { avisar(e.message || 'No se pudo eliminar el vehículo.', true); });
   }
 
   function renderMant(m, combustible) {
