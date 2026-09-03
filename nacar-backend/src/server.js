@@ -8,6 +8,7 @@ const authRoutes = require('./routes/auth');
 const vehiculosRoutes = require('./routes/vehiculos');
 const mantencionesRoutes = require('./routes/mantenciones');
 const usuariosRoutes = require('./routes/usuarios');
+const estadisticasRoutes = require('./routes/estadisticas');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
 app.use('/api/mantenciones', mantencionesRoutes);
 app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/estadisticas', estadisticasRoutes);
 
 app.get('/api/salud', (req, res) => res.json({ ok: true }));
 
