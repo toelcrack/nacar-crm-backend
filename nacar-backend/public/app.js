@@ -138,12 +138,28 @@
     document.getElementById('btn-configuracion').hidden = usuario.rol !== 'admin';
     cargarListasConfig().catch(function () {}); // si falla, los selects igual permiten "+ Agregar nueva..."
     cargarVehiculos();
+    mostrarVista('vehiculos');
   }
   function mostrarLogin() {
     usuarioActual = null;
     document.getElementById('pantalla-app').hidden = true;
     document.getElementById('pantalla-login').hidden = false;
   }
+
+  // ---------- Navegación por pestañas (páginas separadas) ----------
+  var VISTAS = ['vehiculos', 'equipo', 'estadisticas', 'configuracion'];
+  function mostrarVista(nombre) {
+    VISTAS.forEach(function (v) {
+      var sec = document.getElementById('vista-' + v);
+      var btn = document.getElementById('btn-' + v);
+      if (sec) sec.hidden = (v !== nombre);
+      if (btn) btn.classList.toggle('activo', v === nombre);
+    });
+    if (nombre === 'equipo') cargarEquipo();
+    if (nombre === 'estadisticas') cargarEstadisticas();
+    if (nombre === 'configuracion') cargarPanelConfiguracion();
+  }
+  document.getElementById('btn-vehiculos').onclick = function () { mostrarVista('vehiculos'); };
 
   function intentarLogin() {
     var correo = document.getElementById('login-correo').value.trim();
@@ -578,13 +594,7 @@
   };
 
   // ---------- Gestionar equipo (solo admin) ----------
-  document.getElementById('btn-equipo').onclick = function () {
-    document.getElementById('panel-equipo').hidden = false;
-    cargarEquipo();
-  };
-  document.getElementById('btn-cerrar-equipo').onclick = function () {
-    document.getElementById('panel-equipo').hidden = true;
-  };
+  document.getElementById('btn-equipo').onclick = function () { mostrarVista('equipo'); };
   function cargarEquipo() {
     api('/usuarios').then(function (lista) {
       var filas = lista.map(function (u) {
@@ -625,13 +635,7 @@
   };
 
   // ---------- Estadísticas (solo admin) ----------
-  document.getElementById('btn-estadisticas').onclick = function () {
-    document.getElementById('panel-estadisticas').hidden = false;
-    cargarEstadisticas();
-  };
-  document.getElementById('btn-cerrar-estadisticas').onclick = function () {
-    document.getElementById('panel-estadisticas').hidden = true;
-  };
+  document.getElementById('btn-estadisticas').onclick = function () { mostrarVista('estadisticas'); };
 
   function kpiCard(valor, label, sub) {
     return '<div class="kpi-card"><div class="kpi-valor">' + valor + '</div>' +
@@ -766,13 +770,7 @@
     }).catch(function (e) { avisar(e.message || 'No se pudo eliminar.', true); });
   }
 
-  document.getElementById('btn-configuracion').onclick = function () {
-    document.getElementById('panel-configuracion').hidden = false;
-    cargarPanelConfiguracion();
-  };
-  document.getElementById('btn-cerrar-configuracion').onclick = function () {
-    document.getElementById('panel-configuracion').hidden = true;
-  };
+  document.getElementById('btn-configuracion').onclick = function () { mostrarVista('configuracion'); };
   document.getElementById('btn-agregar-marca').onclick = function () {
     var inp = document.getElementById('config-marca-nueva');
     var nombre = inp.value.trim();
