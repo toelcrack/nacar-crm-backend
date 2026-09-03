@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "migrar:esquema": "node src/migrate/aplicar_esquema.js",
     "migrar:historico": "node src/migrate/importar_historico.js",
-    "crear:admin": "node src/migrate/crear_admin.js"
+    "crear:admin": "node src/migrate/crear_admin.js",
+    "sembrar:marcas": "node src/migrate/sembrar_marcas.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
