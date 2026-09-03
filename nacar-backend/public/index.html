@@ -72,6 +72,14 @@
   .panel{background:var(--glass-bg);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;
     margin-bottom:20px;backdrop-filter:blur(6px);}
   .panel h3{font-family:'Oswald',sans-serif;font-weight:500;font-size:16px;margin:0 0 14px;color:var(--white);}
+  .tabs-nav{display:flex;gap:4px;padding:0 clamp(16px,4vw,48px);border-bottom:1px solid rgba(255,255,255,0.1);
+    overflow-x:auto;background:rgba(0,0,0,0.12);}
+  .tab-btn{background:none;border:none;color:var(--gray-2);font-family:'Inter',sans-serif;font-weight:600;
+    font-size:14px;padding:14px 4px;margin-right:22px;cursor:pointer;border-bottom:2px solid transparent;
+    white-space:nowrap;}
+  .tab-btn:hover{color:var(--white-soft);}
+  .tab-btn.activo{color:var(--orange-light);border-bottom-color:var(--orange);}
+  .vista-titulo{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(22px,4vw,30px);margin:0 0 4px;color:var(--white);}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
   @media(max-width:560px){.grid-2,.grid-3{grid-template-columns:1fr;}}
@@ -176,53 +184,64 @@
     <div class="usuario-bar">
       <span>Hola, <strong id="usuario-nombre"></strong></span>
       <span id="usuario-rol-chip" class="chip-rol"></span>
-      <button class="btn-texto" id="btn-equipo" hidden>Gestionar equipo</button>
-      <button class="btn-texto" id="btn-estadisticas" hidden>Estadísticas</button>
-      <button class="btn-texto" id="btn-configuracion" hidden>Configuración</button>
       <button class="btn-texto" id="btn-logout">Cerrar sesión</button>
     </div>
   </header>
 
-  <main>
-    <h1>Vehículos y mantenciones</h1>
-    <p class="lead">Busca por patente, cliente o auto. Cada mantención que agregas queda en el historial con fecha, técnico y kilometraje. Solo un administrador puede corregir o eliminar una entrada con error de tipeo.</p>
+  <nav class="tabs-nav">
+    <button class="tab-btn activo" id="btn-vehiculos" type="button">Vehículos</button>
+    <button class="tab-btn" id="btn-equipo" type="button" hidden>Gestionar equipo</button>
+    <button class="tab-btn" id="btn-estadisticas" type="button" hidden>Estadísticas</button>
+    <button class="tab-btn" id="btn-configuracion" type="button" hidden>Configuración</button>
+  </nav>
 
+  <main>
     <div id="aviso" class="aviso"></div>
 
-    <div class="toolbar">
-      <input id="buscar" type="text" placeholder="Buscar por patente, cliente o auto..." autocomplete="off" />
-      <button class="btn btn-primario" id="btn-nuevo-vehiculo" type="button">+ Nuevo vehículo</button>
-    </div>
+    <section id="vista-vehiculos" class="vista">
+      <h2 class="vista-titulo">Vehículos y mantenciones</h2>
+      <p class="lead">Busca por patente, cliente o auto. Cada mantención que agregas queda en el historial con fecha, técnico y kilometraje. Solo un administrador puede corregir o eliminar una entrada con error de tipeo.</p>
 
-    <div id="form-vehiculo-wrap" class="panel" hidden>
-      <h3>Registrar vehículo nuevo</h3>
-      <div class="grid-3">
-        <div class="campo"><label for="f-patente">Patente</label><input id="f-patente" type="text" placeholder="AB1234" style="text-transform:uppercase" /></div>
-        <div class="campo"><label for="f-marca">Marca</label>
-          <select id="f-marca"></select>
-          <input id="f-marca-nueva" type="text" placeholder="Nombre de la marca nueva" hidden style="margin-top:6px" />
-        </div>
-        <div class="campo"><label for="f-modelo">Modelo</label><input id="f-modelo" type="text" placeholder="Corolla" /></div>
+      <div class="toolbar">
+        <input id="buscar" type="text" placeholder="Buscar por patente, cliente o auto..." autocomplete="off" />
+        <button class="btn btn-primario" id="btn-nuevo-vehiculo" type="button">+ Nuevo vehículo</button>
       </div>
-      <div class="grid-3">
-        <div class="campo"><label for="f-anio">Año</label><input id="f-anio" type="text" placeholder="2020" inputmode="numeric" /></div>
-        <div class="campo"><label for="f-combustible">Combustible</label>
-          <select id="f-combustible"><option value="bencina">Bencina</option><option value="diesel">Petróleo (diésel)</option></select>
-        </div>
-      </div>
-      <p class="campo-label-suelto" style="margin-top:6px">Datos del cliente (para agendar y avisar)</p>
-      <div class="grid-2">
-        <div class="campo"><label for="f-cliente">Nombre cliente (opcional)</label><input id="f-cliente" type="text" placeholder="Juan Pérez" /></div>
-        <div class="campo"><label for="f-correo">Correo</label><input id="f-correo" type="email" placeholder="juan@correo.com" /></div>
-      </div>
-      <div class="acciones-form">
-        <button class="btn btn-primario" id="btn-guardar-vehiculo" type="button">Guardar vehículo</button>
-        <button class="btn-texto" id="btn-cancelar-vehiculo" type="button">Cancelar</button>
-      </div>
-    </div>
 
-    <div id="panel-equipo" class="panel" hidden>
-      <h3>Equipo con acceso al CRM</h3>
+      <div id="form-vehiculo-wrap" class="panel" hidden>
+        <h3>Registrar vehículo nuevo</h3>
+        <div class="grid-3">
+          <div class="campo"><label for="f-patente">Patente</label><input id="f-patente" type="text" placeholder="AB1234" style="text-transform:uppercase" /></div>
+          <div class="campo"><label for="f-marca">Marca</label>
+            <select id="f-marca"></select>
+            <input id="f-marca-nueva" type="text" placeholder="Nombre de la marca nueva" hidden style="margin-top:6px" />
+          </div>
+          <div class="campo"><label for="f-modelo">Modelo</label><input id="f-modelo" type="text" placeholder="Corolla" /></div>
+        </div>
+        <div class="grid-3">
+          <div class="campo"><label for="f-anio">Año</label><input id="f-anio" type="text" placeholder="2020" inputmode="numeric" /></div>
+          <div class="campo"><label for="f-combustible">Combustible</label>
+            <select id="f-combustible"><option value="bencina">Bencina</option><option value="diesel">Petróleo (diésel)</option></select>
+          </div>
+        </div>
+        <p class="campo-label-suelto" style="margin-top:6px">Datos del cliente (para agendar y avisar)</p>
+        <div class="grid-2">
+          <div class="campo"><label for="f-cliente">Nombre cliente (opcional)</label><input id="f-cliente" type="text" placeholder="Juan Pérez" /></div>
+          <div class="campo"><label for="f-correo">Correo</label><input id="f-correo" type="email" placeholder="juan@correo.com" /></div>
+        </div>
+        <div class="acciones-form">
+          <button class="btn btn-primario" id="btn-guardar-vehiculo" type="button">Guardar vehículo</button>
+          <button class="btn-texto" id="btn-cancelar-vehiculo" type="button">Cancelar</button>
+        </div>
+      </div>
+
+      <div id="lista-vehiculos"></div>
+      <div id="vacio" class="vacio" hidden>No hay vehículos que coincidan con la búsqueda.</div>
+
+      <p class="nota-registro">Datos guardados en el servidor del taller — compartidos entre todo el equipo.</p>
+    </section>
+
+    <section id="vista-equipo" class="vista" hidden>
+      <h2 class="vista-titulo">Equipo con acceso al CRM</h2>
       <div id="tabla-equipo-wrap"></div>
       <p class="campo-label-suelto" style="margin-top:16px">Agregar nueva cuenta</p>
       <div class="grid-3">
@@ -235,23 +254,16 @@
       <div class="campo"><label for="eq-password">Contraseña inicial</label><input id="eq-password" type="text" placeholder="Mínimo 6 caracteres" /></div>
       <div class="acciones-form">
         <button class="btn btn-primario" id="btn-crear-usuario" type="button">Crear cuenta</button>
-        <button class="btn-texto" id="btn-cerrar-equipo" type="button">Cerrar</button>
       </div>
-    </div>
+    </section>
 
-    <div id="panel-estadisticas" class="panel" hidden>
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-        <h3 style="margin:0">Estadísticas del taller</h3>
-        <button class="btn-texto" id="btn-cerrar-estadisticas" type="button">Cerrar</button>
-      </div>
+    <section id="vista-estadisticas" class="vista" hidden>
+      <h2 class="vista-titulo">Estadísticas del taller</h2>
       <div id="estadisticas-contenido"><p class="sin-mant">Calculando...</p></div>
-    </div>
+    </section>
 
-    <div id="panel-configuracion" class="panel" hidden>
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-        <h3 style="margin:0">Configuración</h3>
-        <button class="btn-texto" id="btn-cerrar-configuracion" type="button">Cerrar</button>
-      </div>
+    <section id="vista-configuracion" class="vista" hidden>
+      <h2 class="vista-titulo">Configuración</h2>
       <p class="campo-label-suelto">Estas listas aparecen como opciones al registrar un vehículo o una mantención. Cualquiera puede agregar una que falte directo desde el formulario; acá puedes borrar una repetida o mal escrita.</p>
       <div class="grid-2">
         <div>
@@ -271,12 +283,7 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <div id="lista-vehiculos"></div>
-    <div id="vacio" class="vacio" hidden>No hay vehículos que coincidan con la búsqueda.</div>
-
-    <p class="nota-registro">Datos guardados en el servidor del taller — compartidos entre todo el equipo.</p>
+    </section>
   </main>
 </div>
 
