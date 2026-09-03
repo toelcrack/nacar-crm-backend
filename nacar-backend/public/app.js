@@ -3,6 +3,8 @@
   var detalleCache = {}; // id -> {vehiculo, mantenciones}
   var abiertoId = null;
   var timerBuscar = null;
+  var marcasCache = [];
+  var tecnicosCache = [];
 
   var FILTROS = [
     { chk: 'faire', cod: 'faire-cod', campo: 'filtroAire', campoCod: 'filtroAireCodigo', nombre: 'filtro de aire', etiqueta: 'Filtro de aire' },
@@ -65,6 +67,64 @@
     return nombre + (codigo ? ' (' + escapeHtml(codigo) + ')' : '');
   }
 
+  // ---------- Listas configurables (marcas y técnicos) ----------
+  // Se usan en el form de vehículo (marca) y en el de mantención (técnico): un <select> con
+  // las opciones guardadas + "+ Agregar nueva...", que revela un input para escribirla al toque
+  // y la deja guardada en el servidor para la próxima vez, sin tener que pedir ayuda para agregarla.
+  function cargarListasConfig() {
+    return Promise.all([
+      api('/configuracion/marcas').then(function (l) { marcasCache = l; }),
+      api('/configuracion/tecnicos').then(function (l) { tecnicosCache = l; }),
+    ]);
+  }
+
+  function idNueva(selectId) {
+    var m = selectId.match(/^(.*?)(\d+)$/);
+    return m ? m[1] + 'nueva-' + m[2] : selectId + '-nueva';
+  }
+
+  function opcionesSelect(lista, valorActual, etiquetaNueva) {
+    var html = '<option value="">Selecciona...</option>';
+    var yaIncluido = false;
+    lista.forEach(function (it) {
+      var sel = it.nombre === valorActual ? ' selected' : '';
+      if (it.nombre === valorActual) yaIncluido = true;
+      html += '<option value="' + escapeHtml(it.nombre) + '"' + sel + '>' + escapeHtml(it.nombre) + '</option>';
+    });
+    if (valorActual && !yaIncluido) {
+      html += '<option value="' + escapeHtml(valorActual) + '" selected>' + escapeHtml(valorActual) + ' (no está en la lista)</option>';
+    }
+    html += '<option value="__nueva__">' + etiquetaNueva + '</option>';
+    return html;
+  }
+
+  function ligarSelectNuevo(selectId) {
+    var sel = document.getElementById(selectId);
+    var inp = document.getElementById(idNueva(selectId));
+    if (!sel || !inp) return;
+    sel.onchange = function () {
+      inp.hidden = sel.value !== '__nueva__';
+      if (!inp.hidden) inp.focus();
+    };
+  }
+
+  // Resuelve el valor final del select: si eligieron "+ Agregar nueva...", primero la guarda
+  // en el servidor (y en la cache local) y devuelve su nombre; si no, devuelve lo ya seleccionado.
+  function valorFinalDeSelect(selectId, tipo) {
+    var sel = document.getElementById(selectId);
+    var inp = document.getElementById(idNueva(selectId));
+    if (sel.value === '__nueva__') {
+      var nombre = (inp && inp.value ? inp.value : '').trim();
+      if (!nombre) return Promise.resolve('');
+      return api('/configuracion/' + tipo, { method: 'POST', body: { nombre: nombre } }).then(function (row) {
+        var cache = tipo === 'marcas' ? marcasCache : tecnicosCache;
+        if (!cache.some(function (it) { return it.id === row.id; })) cache.push(row);
+        return row.nombre;
+      });
+    }
+    return Promise.resolve(sel.value);
+  }
+
   // ---------- Login ----------
   function mostrarApp(usuario) {
     usuarioActual = usuario;
@@ -75,6 +135,8 @@
     chip.textContent = usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
     document.getElementById('btn-equipo').hidden = usuario.rol !== 'admin';
     document.getElementById('btn-estadisticas').hidden = usuario.rol !== 'admin';
+    document.getElementById('btn-configuracion').hidden = usuario.rol !== 'admin';
+    cargarListasConfig().catch(function () {}); // si falla, los selects igual permiten "+ Agregar nueva..."
     cargarVehiculos();
   }
   function mostrarLogin() {
@@ -127,6 +189,8 @@
       el.querySelector('.vcard-top').onclick = function () { toggleVehiculo(v.id); };
     });
     if (abiertoId && detalleCache[abiertoId]) {
+      var elAbierto = document.getElementById('vcard-' + abiertoId);
+      if (elAbierto) elAbierto.classList.add('abierta');
       pintarDetalle(abiertoId);
     }
   }
@@ -197,6 +261,7 @@
 
     document.getElementById('btn-toggle-mant-' + id).onclick = function () { mostrarFormMant(id); };
     ligarFiltros(id);
+    ligarSelectNuevo('m-tecnico-' + id);
     document.getElementById('btn-guardar-mant-' + id).onclick = function () { guardarMantencion(id); };
     document.getElementById('btn-cancelar-mant-' + id).onclick = function () { limpiarFormMant(id); document.getElementById('form-mant-' + id).hidden = true; };
 
@@ -217,6 +282,7 @@
         document.getElementById('form-vehiculo-editar-' + id).hidden = true;
       };
       document.getElementById('btn-eliminar-vehiculo-' + id).onclick = function (e) { eliminarVehiculo(id, e.currentTarget); };
+      ligarSelectNuevo('fv-marca-' + id);
     }
   }
 
@@ -224,7 +290,10 @@
     return (
       '<div class="grid-3">' +
         '<div class="campo"><label>Patente</label><input id="fv-patente-' + vId + '" type="text" value="' + escapeHtml(v.patente) + '" /></div>' +
-        '<div class="campo"><label>Marca</label><input id="fv-marca-' + vId + '" type="text" value="' + escapeHtml(v.marca || '') + '" /></div>' +
+        '<div class="campo"><label>Marca</label>' +
+          '<select id="fv-marca-' + vId + '">' + opcionesSelect(marcasCache, v.marca || '', '+ Agregar marca nueva...') + '</select>' +
+          '<input id="fv-marca-nueva-' + vId + '" type="text" placeholder="Nombre de la marca nueva" hidden style="margin-top:6px" />' +
+        '</div>' +
         '<div class="campo"><label>Modelo</label><input id="fv-modelo-' + vId + '" type="text" value="' + escapeHtml(v.modelo || '') + '" /></div>' +
       '</div>' +
       '<div class="grid-3">' +
@@ -246,19 +315,21 @@
   }
 
   function guardarVehiculoEditado(vId) {
-    var body = {
-      patente: document.getElementById('fv-patente-' + vId).value.trim().toUpperCase(),
-      marca: document.getElementById('fv-marca-' + vId).value.trim(),
-      modelo: document.getElementById('fv-modelo-' + vId).value.trim(),
-      anio: document.getElementById('fv-anio-' + vId).value.trim(),
-      combustible: document.getElementById('fv-combustible-' + vId).value,
-      clienteNombre: document.getElementById('fv-cliente-' + vId).value.trim(),
-      clienteCorreo: document.getElementById('fv-correo-' + vId).value.trim(),
-    };
-    api('/vehiculos/' + vId, { method: 'PUT', body: body }).then(function () {
-      delete detalleCache[vId];
-      avisar('Vehículo actualizado.');
-      return api('/vehiculos/' + vId).then(function (data) { detalleCache[vId] = data; pintarDetalle(vId); return cargarVehiculos(); });
+    valorFinalDeSelect('fv-marca-' + vId, 'marcas').then(function (marca) {
+      var body = {
+        patente: document.getElementById('fv-patente-' + vId).value.trim().toUpperCase(),
+        marca: marca,
+        modelo: document.getElementById('fv-modelo-' + vId).value.trim(),
+        anio: document.getElementById('fv-anio-' + vId).value.trim(),
+        combustible: document.getElementById('fv-combustible-' + vId).value,
+        clienteNombre: document.getElementById('fv-cliente-' + vId).value.trim(),
+        clienteCorreo: document.getElementById('fv-correo-' + vId).value.trim(),
+      };
+      return api('/vehiculos/' + vId, { method: 'PUT', body: body }).then(function () {
+        delete detalleCache[vId];
+        avisar('Vehículo actualizado.');
+        return api('/vehiculos/' + vId).then(function (data) { detalleCache[vId] = data; pintarDetalle(vId); return cargarVehiculos(); });
+      });
     }).catch(function (e) { avisar(e.message || 'No se pudo actualizar el vehículo.', true); });
   }
 
@@ -322,7 +393,10 @@
       '<div class="grid-3">' +
         '<div class="campo"><label>Fecha</label><input id="m-fecha-' + vId + '" type="date" /></div>' +
         '<div class="campo"><label>Kilometraje</label><input id="m-km-' + vId + '" type="number" placeholder="45000" inputmode="numeric" /></div>' +
-        '<div class="campo"><label>Técnico responsable</label><input id="m-tecnico-' + vId + '" type="text" placeholder="Nombre" /></div>' +
+        '<div class="campo"><label>Técnico responsable</label>' +
+          '<select id="m-tecnico-' + vId + '">' + opcionesSelect(tecnicosCache, '', '+ Agregar técnico nuevo...') + '</select>' +
+          '<input id="m-tecnico-nueva-' + vId + '" type="text" placeholder="Nombre del técnico nuevo" hidden style="margin-top:6px" />' +
+        '</div>' +
       '</div>' +
       '<p class="campo-label-suelto">Repuestos cambiados</p>' +
       '<div class="check-grid">' + filas + '</div>' +
@@ -356,10 +430,14 @@
     var form = document.getElementById('form-mant-' + vId);
     if (!form) return;
     form.removeAttribute('data-editando');
-    ['m-fecha-', 'm-km-', 'm-tecnico-', 'm-costo-', 'm-motor-', 'm-aceite-', 'm-litros-', 'm-notas-'].forEach(function (pref) {
+    ['m-fecha-', 'm-km-', 'm-costo-', 'm-motor-', 'm-aceite-', 'm-litros-', 'm-notas-'].forEach(function (pref) {
       var el = document.getElementById(pref + vId);
       if (el) el.value = '';
     });
+    var selTec = document.getElementById('m-tecnico-' + vId);
+    if (selTec) selTec.innerHTML = opcionesSelect(tecnicosCache, '', '+ Agregar técnico nuevo...');
+    var inpTecNueva = document.getElementById('m-tecnico-nueva-' + vId);
+    if (inpTecNueva) { inpTecNueva.value = ''; inpTecNueva.hidden = true; }
     FILTROS.forEach(function (f) {
       var chk = document.getElementById(f.chk + '-' + vId);
       var cod = document.getElementById(f.cod + '-' + vId);
@@ -383,7 +461,6 @@
     var b = {
       fecha: document.getElementById('m-fecha-' + vId).value,
       km: document.getElementById('m-km-' + vId).value.trim(),
-      tecnico: document.getElementById('m-tecnico-' + vId).value.trim(),
       costo: document.getElementById('m-costo-' + vId).value.trim(),
       motor: document.getElementById('m-motor-' + vId).value.trim(),
       aceite: document.getElementById('m-aceite-' + vId).value.trim(),
@@ -400,15 +477,18 @@
   function guardarMantencion(vId) {
     var form = document.getElementById('form-mant-' + vId);
     var editandoAttr = form.getAttribute('data-editando');
-    var body = leerFormMant(vId);
-    var promesa = editandoAttr !== null
-      ? api('/mantenciones/' + editandoAttr, { method: 'PUT', body: body })
-      : api('/vehiculos/' + vId + '/mantenciones', { method: 'POST', body: body });
+    valorFinalDeSelect('m-tecnico-' + vId, 'tecnicos').then(function (tecnico) {
+      var body = leerFormMant(vId);
+      body.tecnico = tecnico;
+      var promesa = editandoAttr !== null
+        ? api('/mantenciones/' + editandoAttr, { method: 'PUT', body: body })
+        : api('/vehiculos/' + vId + '/mantenciones', { method: 'POST', body: body });
 
-    promesa.then(function () {
-      delete detalleCache[vId];
-      avisar(editandoAttr !== null ? 'Mantención corregida.' : 'Mantención guardada.');
-      return api('/vehiculos/' + vId).then(function (data) { detalleCache[vId] = data; pintarDetalle(vId); return cargarVehiculos(); });
+      return promesa.then(function () {
+        delete detalleCache[vId];
+        avisar(editandoAttr !== null ? 'Mantención corregida.' : 'Mantención guardada.');
+        return api('/vehiculos/' + vId).then(function (data) { detalleCache[vId] = data; pintarDetalle(vId); return cargarVehiculos(); });
+      });
     }).catch(function (e) {
       avisar(e.message || 'No se pudo guardar.', true);
     });
@@ -423,7 +503,8 @@
     form.setAttribute('data-editando', mId);
     document.getElementById('m-fecha-' + vId).value = m.fecha ? String(m.fecha).slice(0, 10) : '';
     document.getElementById('m-km-' + vId).value = m.km || '';
-    document.getElementById('m-tecnico-' + vId).value = m.tecnico || '';
+    document.getElementById('m-tecnico-' + vId).innerHTML = opcionesSelect(tecnicosCache, m.tecnico || '', '+ Agregar técnico nuevo...');
+    document.getElementById('m-tecnico-nueva-' + vId).hidden = true;
     document.getElementById('m-costo-' + vId).value = m.costo || '';
     document.getElementById('m-motor-' + vId).value = m.motor || '';
     document.getElementById('m-aceite-' + vId).value = m.aceite || '';
@@ -457,32 +538,42 @@
   }
 
   // ---------- Nuevo vehículo ----------
+  function resetSelectMarcaNueva() {
+    document.getElementById('f-marca').innerHTML = opcionesSelect(marcasCache, '', '+ Agregar marca nueva...');
+    document.getElementById('f-marca-nueva').hidden = true;
+    document.getElementById('f-marca-nueva').value = '';
+  }
+  ligarSelectNuevo('f-marca');
   document.getElementById('btn-nuevo-vehiculo').onclick = function () {
+    resetSelectMarcaNueva();
     document.getElementById('form-vehiculo-wrap').hidden = false;
     document.getElementById('f-patente').focus();
   };
   document.getElementById('btn-cancelar-vehiculo').onclick = ocultarFormVehiculo;
   function ocultarFormVehiculo() {
     document.getElementById('form-vehiculo-wrap').hidden = true;
-    ['f-patente', 'f-marca', 'f-modelo', 'f-anio', 'f-cliente', 'f-correo'].forEach(function (id) {
+    ['f-patente', 'f-modelo', 'f-anio', 'f-cliente', 'f-correo'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
+    resetSelectMarcaNueva();
     document.getElementById('f-combustible').value = 'bencina';
   }
   document.getElementById('btn-guardar-vehiculo').onclick = function () {
-    var body = {
-      patente: document.getElementById('f-patente').value.trim().toUpperCase(),
-      marca: document.getElementById('f-marca').value.trim(),
-      modelo: document.getElementById('f-modelo').value.trim(),
-      anio: document.getElementById('f-anio').value.trim(),
-      combustible: document.getElementById('f-combustible').value,
-      clienteNombre: document.getElementById('f-cliente').value.trim(),
-      clienteCorreo: document.getElementById('f-correo').value.trim(),
-    };
-    api('/vehiculos', { method: 'POST', body: body }).then(function (v) {
-      ocultarFormVehiculo();
-      avisar('Vehículo ' + v.patente + ' guardado.');
-      cargarVehiculos();
+    valorFinalDeSelect('f-marca', 'marcas').then(function (marca) {
+      var body = {
+        patente: document.getElementById('f-patente').value.trim().toUpperCase(),
+        marca: marca,
+        modelo: document.getElementById('f-modelo').value.trim(),
+        anio: document.getElementById('f-anio').value.trim(),
+        combustible: document.getElementById('f-combustible').value,
+        clienteNombre: document.getElementById('f-cliente').value.trim(),
+        clienteCorreo: document.getElementById('f-correo').value.trim(),
+      };
+      return api('/vehiculos', { method: 'POST', body: body }).then(function (v) {
+        ocultarFormVehiculo();
+        avisar('Vehículo ' + v.patente + ' guardado.');
+        cargarVehiculos();
+      });
     }).catch(function (e) { avisar(e.message || 'No se pudo guardar el vehículo.', true); });
   };
 
@@ -647,6 +738,59 @@
       cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudieron cargar las estadísticas.') + '</p>';
     });
   }
+
+  // ---------- Configuración: marcas y técnicos (solo admin gestiona/borra) ----------
+  function renderListaConfig(contId, items, tipo) {
+    var cont = document.getElementById(contId);
+    if (!items.length) { cont.innerHTML = '<p class="sin-mant">Sin datos todavía.</p>'; return; }
+    var ordenada = items.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+    cont.innerHTML = '<div class="config-lista">' + ordenada.map(function (it) {
+      return '<div class="config-item"><span>' + escapeHtml(it.nombre) + '</span>' +
+        '<button class="btn-texto" data-id="' + it.id + '" data-tipo="' + tipo + '">Eliminar</button></div>';
+    }).join('') + '</div>';
+    cont.querySelectorAll('button[data-id]').forEach(function (b) {
+      b.onclick = function () { eliminarDeConfig(b.getAttribute('data-tipo'), Number(b.getAttribute('data-id'))); };
+    });
+  }
+
+  function cargarPanelConfiguracion() {
+    cargarListasConfig().then(function () {
+      renderListaConfig('lista-marcas-config', marcasCache, 'marcas');
+      renderListaConfig('lista-tecnicos-config', tecnicosCache, 'tecnicos');
+    }).catch(function (e) { avisar(e.message || 'No se pudieron cargar las listas.', true); });
+  }
+
+  function eliminarDeConfig(tipo, id) {
+    api('/configuracion/' + tipo + '/' + id, { method: 'DELETE' }).then(function () {
+      cargarPanelConfiguracion();
+    }).catch(function (e) { avisar(e.message || 'No se pudo eliminar.', true); });
+  }
+
+  document.getElementById('btn-configuracion').onclick = function () {
+    document.getElementById('panel-configuracion').hidden = false;
+    cargarPanelConfiguracion();
+  };
+  document.getElementById('btn-cerrar-configuracion').onclick = function () {
+    document.getElementById('panel-configuracion').hidden = true;
+  };
+  document.getElementById('btn-agregar-marca').onclick = function () {
+    var inp = document.getElementById('config-marca-nueva');
+    var nombre = inp.value.trim();
+    if (!nombre) return;
+    api('/configuracion/marcas', { method: 'POST', body: { nombre: nombre } }).then(function () {
+      inp.value = '';
+      cargarPanelConfiguracion();
+    }).catch(function (e) { avisar(e.message || 'No se pudo agregar.', true); });
+  };
+  document.getElementById('btn-agregar-tecnico').onclick = function () {
+    var inp = document.getElementById('config-tecnico-nuevo');
+    var nombre = inp.value.trim();
+    if (!nombre) return;
+    api('/configuracion/tecnicos', { method: 'POST', body: { nombre: nombre } }).then(function () {
+      inp.value = '';
+      cargarPanelConfiguracion();
+    }).catch(function (e) { avisar(e.message || 'No se pudo agregar.', true); });
+  };
 
   // ---------- Arranque ----------
   api('/auth/me').then(mostrarApp).catch(mostrarLogin);
