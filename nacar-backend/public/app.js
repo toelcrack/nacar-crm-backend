@@ -74,6 +74,7 @@
     var chip = document.getElementById('usuario-rol-chip');
     chip.textContent = usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
     document.getElementById('btn-equipo').hidden = usuario.rol !== 'admin';
+    document.getElementById('btn-estadisticas').hidden = usuario.rol !== 'admin';
     cargarVehiculos();
   }
   function mostrarLogin() {
@@ -531,6 +532,121 @@
       cargarEquipo();
     }).catch(function (e) { avisar(e.message || 'No se pudo crear la cuenta.', true); });
   };
+
+  // ---------- Estadísticas (solo admin) ----------
+  document.getElementById('btn-estadisticas').onclick = function () {
+    document.getElementById('panel-estadisticas').hidden = false;
+    cargarEstadisticas();
+  };
+  document.getElementById('btn-cerrar-estadisticas').onclick = function () {
+    document.getElementById('panel-estadisticas').hidden = true;
+  };
+
+  function kpiCard(valor, label, sub) {
+    return '<div class="kpi-card"><div class="kpi-valor">' + valor + '</div>' +
+      '<div class="kpi-label">' + escapeHtml(label) + '</div>' +
+      (sub ? '<div class="kpi-sub">' + escapeHtml(sub) + '</div>' : '') +
+    '</div>';
+  }
+
+  function rankingHtml(items) {
+    if (!items.length) return '<p class="sin-mant">Sin datos todavía.</p>';
+    var max = Math.max.apply(null, items.map(function (it) { return it.cantidad; })) || 1;
+    return '<ul class="ranking">' + items.map(function (it) {
+      var ancho = Math.max(4, Math.round((it.cantidad / max) * 100));
+      var extra = it.porcentaje != null ? ' (' + it.porcentaje + '%)' : '';
+      return '<li>' +
+        '<span class="rk-nombre" title="' + escapeHtml(it.etiqueta) + '">' + escapeHtml(it.etiqueta) + '</span>' +
+        '<span class="rk-barra-wrap"><span class="rk-barra" style="width:' + ancho + '%"></span></span>' +
+        '<span class="rk-cantidad">' + it.cantidad + extra + '</span>' +
+      '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function mesBonito(mes) {
+    var meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    var p = String(mes).split('-');
+    if (p.length !== 2) return mes;
+    var idx = Number(p[1]) - 1;
+    return (meses[idx] || p[1]) + ' ' + p[0];
+  }
+
+  function cargarEstadisticas() {
+    var cont = document.getElementById('estadisticas-contenido');
+    cont.innerHTML = '<p class="sin-mant">Calculando...</p>';
+    api('/estadisticas').then(function (d) {
+      var html = '';
+
+      html += '<div class="kpi-grid">' +
+        kpiCard(d.totales.vehiculos, 'Vehículos registrados') +
+        kpiCard(d.totales.mantenciones, 'Mantenciones registradas') +
+        kpiCard(d.totales.promedio_mantenciones_por_vehiculo, 'Mantenciones promedio por vehículo') +
+        kpiCard(
+          d.clientes_recurrentes.porcentaje_sobre_total_vehiculos + '%',
+          'Patentes con más de 1 mantención',
+          d.clientes_recurrentes.vehiculos_con_mas_de_una + ' de ' + d.totales.vehiculos + ' patentes registradas'
+        ) +
+        kpiCard(
+          d.clientes_recurrentes.porcentaje_sobre_atendidos + '%',
+          'Tasa de repetición de clientes atendidos',
+          d.clientes_recurrentes.vehiculos_con_mas_de_una + ' de ' + d.clientes_recurrentes.vehiculos_con_alguna_mantencion + ' con historial volvieron'
+        ) +
+        kpiCard(d.totales.vehiculos_sin_mantencion, 'Vehículos sin ninguna mantención aún') +
+        kpiCard(Number(d.kilometraje_promedio).toLocaleString('es-CL') + ' km', 'Kilometraje promedio en mantenciones') +
+      '</div>';
+
+      html += '<div class="stat-bloque"><h4>Marca más repetida</h4>' +
+        rankingHtml(d.marcas_top.map(function (m) { return { etiqueta: m.marca, cantidad: m.cantidad, porcentaje: m.porcentaje }; })) +
+      '</div>';
+
+      if (d.modelos_top.length) {
+        html += '<div class="stat-bloque"><h4>Marca y modelo más repetidos</h4>' +
+          rankingHtml(d.modelos_top.map(function (m) { return { etiqueta: m.marca + ' ' + m.modelo, cantidad: m.cantidad }; })) +
+        '</div>';
+      }
+
+      html += '<div class="stat-bloque"><h4>Combustible de los vehículos</h4>' +
+        rankingHtml(d.combustible.map(function (c) {
+          return { etiqueta: c.combustible === 'diesel' ? 'Petróleo (diésel)' : 'Bencina', cantidad: c.cantidad, porcentaje: c.porcentaje };
+        })) +
+      '</div>';
+
+      html += '<div class="stat-bloque"><h4>Filtros más cambiados</h4>' +
+        rankingHtml(d.filtros_cambiados.map(function (f) { return { etiqueta: f.filtro, cantidad: f.cantidad }; })) +
+      '</div>';
+
+      if (d.codigos_repuesto_top.length) {
+        html += '<div class="stat-bloque"><h4>Códigos de repuesto más usados</h4>' +
+          rankingHtml(d.codigos_repuesto_top.map(function (c) { return { etiqueta: c.codigo, cantidad: c.cantidad }; })) +
+        '</div>';
+      }
+
+      if (d.tecnicos_top.length) {
+        html += '<div class="stat-bloque"><h4>Técnicos con más mantenciones registradas</h4>' +
+          rankingHtml(d.tecnicos_top.map(function (t) { return { etiqueta: t.tecnico, cantidad: t.cantidad }; })) +
+        '</div>';
+      }
+
+      html += '<div class="kpi-grid">' +
+        kpiCard(
+          '$' + Number(d.costos.total_clp).toLocaleString('es-CL'),
+          'Total facturado registrado',
+          d.costos.mantenciones_con_costo_registrado + ' mantenciones con costo ingresado'
+        ) +
+        kpiCard('$' + Number(d.costos.promedio_clp).toLocaleString('es-CL'), 'Ticket promedio por mantención') +
+      '</div>';
+
+      if (d.mantenciones_por_mes.length) {
+        html += '<div class="stat-bloque"><h4>Mantenciones por mes (últimos 6 meses)</h4>' +
+          rankingHtml(d.mantenciones_por_mes.map(function (m) { return { etiqueta: mesBonito(m.mes), cantidad: m.cantidad }; })) +
+        '</div>';
+      }
+
+      cont.innerHTML = html;
+    }).catch(function (e) {
+      cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudieron cargar las estadísticas.') + '</p>';
+    });
+  }
 
   // ---------- Arranque ----------
   api('/auth/me').then(mostrarApp).catch(mostrarLogin);
