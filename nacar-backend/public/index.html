@@ -145,6 +145,12 @@
   .rk-barra-wrap{flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:7px;overflow:hidden;min-width:40px;}
   .rk-barra{display:block;height:100%;border-radius:4px;background:var(--orange);}
   .rk-cantidad{flex:0 0 auto;color:var(--gray-2);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px;}
+
+  /* Configuración (listas de marcas / técnicos) */
+  .config-lista{max-height:280px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:4px 12px;}
+  .config-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;
+    border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px;color:var(--white-soft);}
+  .config-item:last-child{border-bottom:none;}
 </style>
 </head>
 <body>
@@ -172,6 +178,7 @@
       <span id="usuario-rol-chip" class="chip-rol"></span>
       <button class="btn-texto" id="btn-equipo" hidden>Gestionar equipo</button>
       <button class="btn-texto" id="btn-estadisticas" hidden>Estadísticas</button>
+      <button class="btn-texto" id="btn-configuracion" hidden>Configuración</button>
       <button class="btn-texto" id="btn-logout">Cerrar sesión</button>
     </div>
   </header>
@@ -191,7 +198,10 @@
       <h3>Registrar vehículo nuevo</h3>
       <div class="grid-3">
         <div class="campo"><label for="f-patente">Patente</label><input id="f-patente" type="text" placeholder="AB1234" style="text-transform:uppercase" /></div>
-        <div class="campo"><label for="f-marca">Marca</label><input id="f-marca" type="text" placeholder="Toyota" /></div>
+        <div class="campo"><label for="f-marca">Marca</label>
+          <select id="f-marca"></select>
+          <input id="f-marca-nueva" type="text" placeholder="Nombre de la marca nueva" hidden style="margin-top:6px" />
+        </div>
         <div class="campo"><label for="f-modelo">Modelo</label><input id="f-modelo" type="text" placeholder="Corolla" /></div>
       </div>
       <div class="grid-3">
@@ -235,6 +245,32 @@
         <button class="btn-texto" id="btn-cerrar-estadisticas" type="button">Cerrar</button>
       </div>
       <div id="estadisticas-contenido"><p class="sin-mant">Calculando...</p></div>
+    </div>
+
+    <div id="panel-configuracion" class="panel" hidden>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+        <h3 style="margin:0">Configuración</h3>
+        <button class="btn-texto" id="btn-cerrar-configuracion" type="button">Cerrar</button>
+      </div>
+      <p class="campo-label-suelto">Estas listas aparecen como opciones al registrar un vehículo o una mantención. Cualquiera puede agregar una que falte directo desde el formulario; acá puedes borrar una repetida o mal escrita.</p>
+      <div class="grid-2">
+        <div>
+          <p class="campo-label-suelto" style="margin-top:10px"><strong>Marcas de auto</strong></p>
+          <div id="lista-marcas-config"></div>
+          <div class="acciones-form" style="margin-top:8px">
+            <input id="config-marca-nueva" type="text" placeholder="Nueva marca" />
+            <button class="btn btn-secundario" id="btn-agregar-marca" type="button">+ Agregar</button>
+          </div>
+        </div>
+        <div>
+          <p class="campo-label-suelto" style="margin-top:10px"><strong>Técnicos</strong></p>
+          <div id="lista-tecnicos-config"></div>
+          <div class="acciones-form" style="margin-top:8px">
+            <input id="config-tecnico-nuevo" type="text" placeholder="Nuevo técnico" />
+            <button class="btn btn-secundario" id="btn-agregar-tecnico" type="button">+ Agregar</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="lista-vehiculos"></div>
