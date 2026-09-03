@@ -129,6 +129,22 @@
   table.usuarios th, table.usuarios td{text-align:left;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.07);}
   table.usuarios th{color:var(--gray-2);font-weight:500;}
   .badge-inactivo{color:var(--danger-text);font-size:11px;}
+
+  /* Estadísticas */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px;}
+  .kpi-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;}
+  .kpi-valor{font-family:'Oswald',sans-serif;font-weight:600;font-size:26px;color:var(--orange-light);line-height:1.15;font-variant-numeric:tabular-nums;}
+  .kpi-label{font-size:12px;color:var(--gray-2);margin-top:4px;}
+  .kpi-sub{font-size:11px;color:var(--gray-3);margin-top:2px;}
+  .stat-bloque{margin-bottom:22px;}
+  .stat-bloque h4{font-family:'Oswald',sans-serif;font-weight:500;font-size:13px;color:var(--white);
+    margin:0 0 12px;text-transform:uppercase;letter-spacing:0.04em;}
+  ul.ranking{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;}
+  ul.ranking li{display:flex;align-items:center;gap:10px;font-size:13px;}
+  .rk-nombre{flex:0 0 auto;min-width:120px;max-width:220px;color:var(--white-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rk-barra-wrap{flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:7px;overflow:hidden;min-width:40px;}
+  .rk-barra{display:block;height:100%;border-radius:4px;background:var(--orange);}
+  .rk-cantidad{flex:0 0 auto;color:var(--gray-2);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px;}
 </style>
 </head>
 <body>
@@ -155,6 +171,7 @@
       <span>Hola, <strong id="usuario-nombre"></strong></span>
       <span id="usuario-rol-chip" class="chip-rol"></span>
       <button class="btn-texto" id="btn-equipo" hidden>Gestionar equipo</button>
+      <button class="btn-texto" id="btn-estadisticas" hidden>Estadísticas</button>
       <button class="btn-texto" id="btn-logout">Cerrar sesión</button>
     </div>
   </header>
@@ -210,6 +227,14 @@
         <button class="btn btn-primario" id="btn-crear-usuario" type="button">Crear cuenta</button>
         <button class="btn-texto" id="btn-cerrar-equipo" type="button">Cerrar</button>
       </div>
+    </div>
+
+    <div id="panel-estadisticas" class="panel" hidden>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+        <h3 style="margin:0">Estadísticas del taller</h3>
+        <button class="btn-texto" id="btn-cerrar-estadisticas" type="button">Cerrar</button>
+      </div>
+      <div id="estadisticas-contenido"><p class="sin-mant">Calculando...</p></div>
     </div>
 
     <div id="lista-vehiculos"></div>
