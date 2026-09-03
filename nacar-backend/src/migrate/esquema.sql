@@ -52,3 +52,17 @@ CREATE TABLE IF NOT EXISTS mantenciones (
 CREATE INDEX IF NOT EXISTS idx_vehiculos_patente ON vehiculos (patente);
 CREATE INDEX IF NOT EXISTS idx_vehiculos_marca_modelo ON vehiculos (marca, modelo);
 CREATE INDEX IF NOT EXISTS idx_mantenciones_vehiculo ON mantenciones (vehiculo_id);
+
+-- Listas configurables para los selectores de "Marca" y "Técnico" (no son llaves foráneas:
+-- vehiculos.marca y mantenciones.tecnico siguen siendo texto libre, esto es solo la lista de sugerencias).
+CREATE TABLE IF NOT EXISTS marcas (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL UNIQUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tecnicos (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL UNIQUE,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
