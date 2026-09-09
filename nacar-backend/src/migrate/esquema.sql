@@ -79,3 +79,26 @@ CREATE TABLE IF NOT EXISTS bahias (
   nota TEXT,
   ocupado_desde TIMESTAMPTZ
 );
+
+-- Calendario de mantenciones futuras por bahía (agregado 09-sep-2026): permite agendar, con
+-- fecha y horas, qué auto va a ocupar cada elevador/patio los próximos días, no solo saber
+-- quién está ahí ahora. "atrasado" es una bandera visual (borde/alerta) para marcar atrasos o
+-- problemas con el auto asignado a esa cita, sin perder la nota original del trabajo.
+-- No reemplaza "bahias" (que sigue siendo "quién está ahí ahora mismo" para autos sin cita
+-- previa) — es aditivo, así que no afecta nada de lo ya desplegado y probado.
+CREATE TABLE IF NOT EXISTS citas (
+  id SERIAL PRIMARY KEY,
+  bahia_id INTEGER NOT NULL REFERENCES bahias(id) ON DELETE CASCADE,
+  vehiculo_id INTEGER NOT NULL REFERENCES vehiculos(id) ON DELETE CASCADE,
+  fecha DATE NOT NULL,
+  hora_inicio TIME NOT NULL,
+  hora_fin TIME,
+  nota TEXT,
+  atrasado BOOLEAN NOT NULL DEFAULT false,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  creado_por INTEGER REFERENCES usuarios(id),
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_citas_bahia_fecha ON citas (bahia_id, fecha);
+CREATE INDEX IF NOT EXISTS idx_citas_fecha ON citas (fecha);
