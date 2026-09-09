@@ -159,6 +159,28 @@
   .config-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;
     border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px;color:var(--white-soft);}
   .config-item:last-child{border-bottom:none;}
+
+  /* Agenda del taller (bahías: elevadores + patio) */
+  .grid-bahias{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;}
+  .bahia-card{background:var(--glass-bg);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px 20px;}
+  .bahia-card.ocupada{border-color:var(--glass-border);background:rgba(217,100,46,0.07);}
+  .bahia-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+  .bahia-nombre{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;color:var(--white);}
+  .bahia-tipo{font-size:11px;color:var(--gray-3);text-transform:uppercase;letter-spacing:0.04em;}
+  .bahia-estado-chip{font-size:11px;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:0.03em;
+    border:1px solid rgba(255,255,255,0.12);color:var(--gray-2);}
+  .bahia-estado-chip.ocupada{background:rgba(217,100,46,0.16);border-color:var(--glass-border);color:var(--orange-light);}
+  .bahia-auto{font-family:'Oswald',sans-serif;font-weight:500;font-size:15px;color:var(--white);margin-top:10px;}
+  .bahia-cliente{font-size:13px;color:var(--gray-2);margin-top:2px;}
+  .bahia-desde{font-size:11px;color:var(--gray-3);margin-top:6px;}
+  .bahia-nota{font-size:13px;color:var(--white-soft);margin-top:10px;padding:8px 10px;background:rgba(255,255,255,0.04);
+    border-radius:8px;border-left:2px solid var(--orange);}
+  .bahia-nota.vacia{color:var(--gray-3);font-style:italic;border-left-color:rgba(255,255,255,0.12);}
+  .bahia-disponible-txt{font-size:13px;color:var(--gray-3);font-style:italic;margin:0 0 12px;}
+  .bahia-card .campo{margin-bottom:8px;}
+  .bahia-card .acciones-form{margin-top:12px;}
+  .bahia-nota-edit{display:flex;gap:8px;margin-top:10px;}
+  .bahia-nota-edit input{flex:1;}
 </style>
 </head>
 <body>
@@ -190,6 +212,7 @@
 
   <nav class="tabs-nav">
     <button class="tab-btn activo" id="btn-vehiculos" type="button">Vehículos</button>
+    <button class="tab-btn" id="btn-taller" type="button">Taller</button>
     <button class="tab-btn" id="btn-equipo" type="button" hidden>Gestionar equipo</button>
     <button class="tab-btn" id="btn-estadisticas" type="button" hidden>Estadísticas</button>
     <button class="tab-btn" id="btn-configuracion" type="button" hidden>Configuración</button>
@@ -238,6 +261,12 @@
       <div id="vacio" class="vacio" hidden>No hay vehículos que coincidan con la búsqueda.</div>
 
       <p class="nota-registro">Datos guardados en el servidor del taller — compartidos entre todo el equipo.</p>
+    </section>
+
+    <section id="vista-taller" class="vista" hidden>
+      <h2 class="vista-titulo">Agenda del taller</h2>
+      <p class="lead">Qué auto está en cada elevador y cuál está esperando en el patio. Para asignar un auto, tiene que estar registrado antes en la pestaña Vehículos (búscalo por patente).</p>
+      <div id="grid-bahias" class="grid-bahias"><p class="sin-mant">Cargando...</p></div>
     </section>
 
     <section id="vista-equipo" class="vista" hidden>
