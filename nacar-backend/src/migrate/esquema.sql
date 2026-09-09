@@ -102,3 +102,20 @@ CREATE TABLE IF NOT EXISTS citas (
 
 CREATE INDEX IF NOT EXISTS idx_citas_bahia_fecha ON citas (bahia_id, fecha);
 CREATE INDEX IF NOT EXISTS idx_citas_fecha ON citas (fecha);
+
+-- Chat de comentarios por cita (agregado 09-sep-2026): reemplaza el casillero único de
+-- "atrasado" por una conversación real — cualquiera puede ir dejando mensajes con fecha/hora
+-- y autor (ej. "9:40 llegó el auto", "10:15 atraso: falta repuesto", "11:00 resuelto, listo").
+-- "atrasado" en cada mensaje es opcional: si se marca, ese mensaje pasa a ser el estado vigente
+-- de la cita (citas.atrasado se actualiza solo al postear un comentario nuevo).
+CREATE TABLE IF NOT EXISTS cita_comentarios (
+  id SERIAL PRIMARY KEY,
+  cita_id INTEGER NOT NULL REFERENCES citas(id) ON DELETE CASCADE,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  autor_nombre TEXT NOT NULL,
+  mensaje TEXT NOT NULL,
+  atrasado BOOLEAN NOT NULL DEFAULT false,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cita_comentarios_cita ON cita_comentarios (cita_id);
