@@ -66,3 +66,16 @@ CREATE TABLE IF NOT EXISTS tecnicos (
   nombre TEXT NOT NULL UNIQUE,
   creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Agenda del taller: bahías fijas (3 elevadores + 1 patio de espera) para saber, de un vistazo,
+-- qué auto está en cada una y qué se le está haciendo. vehiculo_id usa ON DELETE SET NULL (no
+-- CASCADE) para que si algún día se elimina el vehículo, la bahía quede libre en vez de romperse.
+CREATE TABLE IF NOT EXISTS bahias (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL UNIQUE,
+  tipo TEXT NOT NULL DEFAULT 'elevador' CHECK (tipo IN ('elevador','patio')),
+  orden INTEGER NOT NULL DEFAULT 0,
+  vehiculo_id INTEGER REFERENCES vehiculos(id) ON DELETE SET NULL,
+  nota TEXT,
+  ocupado_desde TIMESTAMPTZ
+);
