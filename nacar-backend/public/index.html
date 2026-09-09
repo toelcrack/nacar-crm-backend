@@ -181,6 +181,50 @@
   .bahia-card .acciones-form{margin-top:12px;}
   .bahia-nota-edit{display:flex;gap:8px;margin-top:10px;}
   .bahia-nota-edit input{flex:1;}
+
+  /* Calendario de mantenciones futuras por bahía */
+  .calendario-taller{margin-top:30px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.08);}
+  .calendario-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+  .calendario-nav{display:flex;align-items:center;gap:10px;}
+  .calendario-rango{font-family:'Oswald',sans-serif;font-weight:500;font-size:15px;color:var(--white);min-width:190px;text-align:center;}
+  .btn-cal-nav{background:var(--glass-bg);border:1px solid rgba(255,255,255,0.1);color:var(--white-soft);
+    border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;}
+  .btn-cal-nav:hover{border-color:var(--orange);color:var(--orange-light);}
+  .calendario-scroll{overflow-x:auto;padding-bottom:8px;}
+  .grid-calendario{display:grid;grid-template-columns:120px repeat(7,minmax(148px,1fr));gap:8px;min-width:1220px;}
+  .cal-esquina{}
+  .cal-dia-header{text-align:center;font-family:'Oswald',sans-serif;font-size:12px;color:var(--gray-2);
+    padding:8px 4px;border-radius:8px;background:rgba(255,255,255,0.04);text-transform:uppercase;letter-spacing:0.03em;}
+  .cal-dia-header .cal-dia-num{display:block;font-size:15px;color:var(--white);margin-top:2px;font-weight:600;}
+  .cal-dia-header.hoy{background:rgba(217,100,46,0.18);border:1px solid var(--glass-border);}
+  .cal-dia-header.hoy .cal-dia-num{color:var(--orange-light);}
+  .cal-bahia-label{display:flex;align-items:center;font-family:'Oswald',sans-serif;font-weight:600;
+    font-size:13px;color:var(--white);padding:6px 4px;}
+  .cal-celda{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;
+    padding:6px;min-height:76px;display:flex;flex-direction:column;gap:6px;}
+  .cal-celda.hoy-col{border-color:var(--glass-border);background:rgba(217,100,46,0.05);}
+  .cita-chip{background:var(--glass-bg);border:1px solid rgba(255,255,255,0.12);border-radius:8px;
+    padding:6px 8px;font-size:12px;color:var(--white-soft);cursor:pointer;text-align:left;width:100%;}
+  .cita-chip:hover{border-color:var(--orange);}
+  .cita-chip.atrasado{border-color:var(--danger-border);background:var(--danger-bg);color:var(--danger-text);}
+  .cita-chip .cita-hora{font-weight:600;color:var(--white);font-variant-numeric:tabular-nums;display:block;}
+  .cita-chip.atrasado .cita-hora{color:var(--danger-text);}
+  .cita-chip .cita-patente{font-family:'Oswald',sans-serif;letter-spacing:0.03em;}
+  .cita-chip .cita-nota-prev{display:block;color:var(--gray-3);font-size:11px;margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cita-chip.atrasado .cita-nota-prev{color:var(--danger-text);}
+  .btn-cal-agregar{width:100%;background:transparent;border:1px dashed rgba(255,255,255,0.18);border-radius:8px;
+    color:var(--gray-3);font-size:12px;padding:6px;cursor:pointer;}
+  .btn-cal-agregar:hover{border-color:var(--orange);color:var(--orange-light);}
+
+  .modal-fondo{position:fixed;inset:0;background:rgba(10,8,7,0.72);display:flex;align-items:center;
+    justify-content:center;padding:16px;z-index:50;}
+  .modal-caja{background:#1a1512;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:22px;
+    width:100%;max-width:420px;max-height:90vh;overflow-y:auto;}
+  .modal-caja h3{font-family:'Oswald',sans-serif;font-weight:500;font-size:17px;margin:0 0 14px;color:var(--white);}
+  .modal-caja .campo{margin-bottom:10px;}
+  .chk-atrasado{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--danger-text);margin:10px 0 4px;}
+  .chk-atrasado input{width:16px;height:16px;}
 </style>
 </head>
 <body>
@@ -267,6 +311,22 @@
       <h2 class="vista-titulo">Agenda del taller</h2>
       <p class="lead">Qué auto está en cada elevador y cuál está esperando en el patio. Para asignar un auto, tiene que estar registrado antes en la pestaña Vehículos (búscalo por patente).</p>
       <div id="grid-bahias" class="grid-bahias"><p class="sin-mant">Cargando...</p></div>
+
+      <div class="calendario-taller">
+        <h2 class="vista-titulo" style="font-size:18px">Calendario de mantenciones</h2>
+        <p class="lead">Agenda futura por bahía: qué auto viene, qué día y a qué hora — para que el equipo vea de un vistazo lo que se viene. Marca ⚠️ Atraso/problema si algo se complicó, sin perder la nota original.</p>
+        <div class="calendario-header">
+          <div class="calendario-nav">
+            <button class="btn-cal-nav" id="cal-semana-ant" type="button">‹ Semana anterior</button>
+            <span class="calendario-rango" id="cal-rango-txt"></span>
+            <button class="btn-cal-nav" id="cal-semana-sig" type="button">Semana siguiente ›</button>
+          </div>
+          <button class="btn-cal-nav" id="cal-semana-hoy" type="button">Hoy</button>
+        </div>
+        <div class="calendario-scroll">
+          <div id="grid-calendario" class="grid-calendario"><p class="sin-mant">Cargando...</p></div>
+        </div>
+      </div>
     </section>
 
     <section id="vista-equipo" class="vista" hidden>
@@ -314,6 +374,40 @@
       </div>
     </section>
   </main>
+</div>
+
+<div id="modal-cita" class="modal-fondo" hidden>
+  <div class="modal-caja">
+    <h3 id="modal-cita-titulo">Nueva cita</h3>
+    <input type="hidden" id="cita-id" />
+    <input type="hidden" id="cita-bahia-id" />
+    <div class="campo"><label for="cita-bahia-nombre">Bahía</label>
+      <input id="cita-bahia-nombre" type="text" disabled />
+    </div>
+    <div class="campo" id="cita-campo-patente"><label for="cita-patente">Patente</label>
+      <input id="cita-patente" list="cita-dl-patente" type="text" placeholder="AB1234" style="text-transform:uppercase" />
+      <datalist id="cita-dl-patente"></datalist>
+    </div>
+    <div id="cita-vehiculo-txt" class="bahia-cliente" style="margin-bottom:10px" hidden></div>
+    <div class="grid-2">
+      <div class="campo"><label for="cita-fecha">Fecha</label><input id="cita-fecha" type="date" /></div>
+      <div class="campo"><label for="cita-hora-inicio">Hora inicio</label><input id="cita-hora-inicio" type="time" /></div>
+    </div>
+    <div class="campo"><label for="cita-hora-fin">Hora término (opcional)</label><input id="cita-hora-fin" type="time" /></div>
+    <div class="campo"><label for="cita-nota">Nota (qué se le va a hacer)</label>
+      <input id="cita-nota" type="text" placeholder="Ej: cambio de aceite y filtros" />
+    </div>
+    <label class="chk-atrasado" id="cita-atrasado-wrap" hidden>
+      <input type="checkbox" id="cita-atrasado" /> ⚠️ Marcar atraso / problema con este auto
+    </label>
+    <div class="acciones-form" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <button class="btn-texto" id="cita-eliminar" type="button" hidden>Cancelar cita</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn-texto" id="cita-cerrar" type="button">Cerrar</button>
+        <button class="btn btn-primario" id="cita-guardar" type="button">Guardar</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>
