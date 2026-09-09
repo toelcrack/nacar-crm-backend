@@ -155,7 +155,7 @@
       if (sec) sec.hidden = (v !== nombre);
       if (btn) btn.classList.toggle('activo', v === nombre);
     });
-    if (nombre === 'taller') cargarBahias();
+    if (nombre === 'taller') { cargarBahias(); cargarCalendarioSemana(); }
     if (nombre === 'equipo') cargarEquipo();
     if (nombre === 'estadisticas') cargarEstadisticas();
     if (nombre === 'configuracion') cargarPanelConfiguracion();
@@ -711,6 +711,227 @@
       .then(function () { avisar('Nota actualizada.'); cargarBahias(); })
       .catch(function (e) { avisar(e.message || 'No se pudo actualizar la nota.', true); });
   }
+
+  // ---------- Calendario de mantenciones futuras por bahía ----------
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function lunesDeSemana(d) {
+    var c = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var dow = c.getDay(); // 0=domingo..6=sábado
+    var diff = (dow === 0) ? -6 : (1 - dow); // la semana empieza el lunes
+    c.setDate(c.getDate() + diff);
+    return c;
+  }
+  function horaCorta(h) {
+    if (!h) return '';
+    return String(h).slice(0, 5);
+  }
+
+  var calSemanaInicio = lunesDeSemana(new Date());
+  var timerCitaPatente = null;
+  var citaModoActual = 'nueva';
+  var calCitasCache = [];
+
+  function cargarCalendarioSemana() {
+    var lunes = calSemanaInicio;
+    var domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
+    var desde = ymd(lunes), hasta = ymd(domingo);
+    document.getElementById('cal-rango-txt').textContent = fechaBonita(desde) + ' al ' + fechaBonita(hasta);
+
+    var cont = document.getElementById('grid-calendario');
+    Promise.all([api('/bahias'), api('/citas?desde=' + desde + '&hasta=' + hasta)]).then(function (r) {
+      var bahiasList = r[0], citas = r[1];
+      calCitasCache = citas;
+      var hoyKey = ymd(new Date());
+      var diasCorto = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+      var dias = [];
+      for (var i = 0; i < 7; i++) {
+        var d = new Date(lunes); d.setDate(lunes.getDate() + i);
+        dias.push({ key: ymd(d), label: diasCorto[i], num: pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1), hoy: ymd(d) === hoyKey });
+      }
+      var porBahiaDia = {};
+      citas.forEach(function (c) {
+        var fkey = String(c.fecha).slice(0, 10);
+        var k = c.bahia_id + '|' + fkey;
+        (porBahiaDia[k] = porBahiaDia[k] || []).push(c);
+      });
+
+      var html = '<div class="cal-esquina"></div>';
+      dias.forEach(function (d) {
+        html += '<div class="cal-dia-header' + (d.hoy ? ' hoy' : '') + '">' + d.label +
+          '<span class="cal-dia-num">' + d.num + '</span></div>';
+      });
+
+      bahiasList.forEach(function (b) {
+        html += '<div class="cal-bahia-label">' + escapeHtml(b.nombre) + '</div>';
+        dias.forEach(function (d) {
+          var lista = porBahiaDia[b.id + '|' + d.key] || [];
+          var chips = lista.map(function (c) {
+            var notaPrev = c.nota ? escapeHtml(c.nota) : '';
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + '" data-cita-id="' + c.id + '">' +
+              (c.atrasado ? '⚠️ ' : '') +
+              '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
+              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
+              (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
+              '</button>';
+          }).join('');
+          html += '<div class="cal-celda' + (d.hoy ? ' hoy-col' : '') + '">' +
+            chips +
+            '<button type="button" class="btn-cal-agregar" data-bahia-id="' + b.id + '" data-bahia-nombre="' +
+              escapeHtml(b.nombre) + '" data-fecha="' + d.key + '">+ Agendar</button>' +
+          '</div>';
+        });
+      });
+
+      cont.innerHTML = html;
+      cont.querySelectorAll('.cita-chip').forEach(function (btn) {
+        btn.onclick = function () {
+          var c = calCitasCache.find(function (x) { return String(x.id) === btn.getAttribute('data-cita-id'); });
+          if (c) abrirModalCita('editar', c);
+        };
+      });
+      cont.querySelectorAll('.btn-cal-agregar').forEach(function (btn) {
+        btn.onclick = function () {
+          abrirModalCita('nueva', {
+            bahia_id: btn.getAttribute('data-bahia-id'),
+            bahia_nombre: btn.getAttribute('data-bahia-nombre'),
+            fecha: btn.getAttribute('data-fecha'),
+          });
+        };
+      });
+    }).catch(function (e) {
+      cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar el calendario.') + '</p>';
+    });
+  }
+
+  document.getElementById('cal-semana-ant').onclick = function () {
+    calSemanaInicio.setDate(calSemanaInicio.getDate() - 7);
+    cargarCalendarioSemana();
+  };
+  document.getElementById('cal-semana-sig').onclick = function () {
+    calSemanaInicio.setDate(calSemanaInicio.getDate() + 7);
+    cargarCalendarioSemana();
+  };
+  document.getElementById('cal-semana-hoy').onclick = function () {
+    calSemanaInicio = lunesDeSemana(new Date());
+    cargarCalendarioSemana();
+  };
+
+  function abrirModalCita(modo, datos) {
+    citaModoActual = modo;
+    var modal = document.getElementById('modal-cita');
+    document.getElementById('cita-id').value = modo === 'editar' ? datos.id : '';
+    document.getElementById('cita-bahia-id').value = datos.bahia_id;
+    document.getElementById('cita-bahia-nombre').value = datos.bahia_nombre || '';
+    document.getElementById('modal-cita-titulo').textContent = modo === 'editar' ? 'Editar cita' : 'Nueva cita';
+
+    var campoPatente = document.getElementById('cita-campo-patente');
+    var vehiculoTxt = document.getElementById('cita-vehiculo-txt');
+    var atrasadoWrap = document.getElementById('cita-atrasado-wrap');
+    var btnEliminar = document.getElementById('cita-eliminar');
+
+    if (modo === 'nueva') {
+      campoPatente.hidden = false;
+      document.getElementById('cita-patente').value = '';
+      document.getElementById('cita-dl-patente').innerHTML = '';
+      vehiculoTxt.hidden = true;
+      atrasadoWrap.hidden = true;
+      document.getElementById('cita-atrasado').checked = false;
+      btnEliminar.hidden = true;
+      document.getElementById('cita-fecha').value = datos.fecha || '';
+      document.getElementById('cita-hora-inicio').value = '';
+      document.getElementById('cita-hora-fin').value = '';
+      document.getElementById('cita-nota').value = '';
+    } else {
+      campoPatente.hidden = true;
+      vehiculoTxt.hidden = false;
+      var autoLinea = escapeHtml(datos.patente) + ' — ' + escapeHtml(datos.marca || '') + ' ' +
+        escapeHtml(datos.modelo || '') + (datos.cliente_nombre ? ' · ' + escapeHtml(datos.cliente_nombre) : '');
+      vehiculoTxt.innerHTML = autoLinea;
+      atrasadoWrap.hidden = false;
+      document.getElementById('cita-atrasado').checked = !!datos.atrasado;
+      btnEliminar.hidden = false;
+      btnEliminar.removeAttribute('data-confirmar');
+      btnEliminar.textContent = 'Cancelar cita';
+      document.getElementById('cita-fecha').value = String(datos.fecha).slice(0, 10);
+      document.getElementById('cita-hora-inicio').value = horaCorta(datos.hora_inicio);
+      document.getElementById('cita-hora-fin').value = horaCorta(datos.hora_fin);
+      document.getElementById('cita-nota').value = datos.nota || '';
+    }
+    modal.hidden = false;
+  }
+
+  function cerrarModalCita() {
+    document.getElementById('modal-cita').hidden = true;
+  }
+
+  document.getElementById('cita-cerrar').onclick = cerrarModalCita;
+  document.getElementById('modal-cita').addEventListener('click', function (e) {
+    if (e.target === this) cerrarModalCita();
+  });
+
+  document.getElementById('cita-patente').addEventListener('input', function () {
+    var inp = this;
+    clearTimeout(timerCitaPatente);
+    timerCitaPatente = setTimeout(function () { llenarDatalistCita(inp.value.trim()); }, 300);
+  });
+
+  function llenarDatalistCita(q) {
+    var dl = document.getElementById('cita-dl-patente');
+    if (!q) { dl.innerHTML = ''; return; }
+    api('/vehiculos?q=' + encodeURIComponent(q)).then(function (lista) {
+      dl.innerHTML = lista.slice(0, 12).map(function (v) {
+        var etiqueta = (v.marca || '') + ' ' + (v.modelo || '') + (v.cliente_nombre ? ' — ' + v.cliente_nombre : '');
+        return '<option value="' + escapeHtml(v.patente) + '">' + escapeHtml(etiqueta.trim()) + '</option>';
+      }).join('');
+    }).catch(function () {});
+  }
+
+  document.getElementById('cita-guardar').onclick = function () {
+    var bahiaId = Number(document.getElementById('cita-bahia-id').value);
+    var fecha = document.getElementById('cita-fecha').value;
+    var horaInicio = document.getElementById('cita-hora-inicio').value;
+    var horaFin = document.getElementById('cita-hora-fin').value;
+    var nota = document.getElementById('cita-nota').value.trim();
+
+    if (!fecha) { avisar('Escoge la fecha.', true); return; }
+    if (!horaInicio) { avisar('Escoge la hora de inicio.', true); return; }
+
+    if (citaModoActual === 'nueva') {
+      var patente = document.getElementById('cita-patente').value.trim().toUpperCase();
+      if (!patente) { avisar('Escribe la patente del vehículo.', true); return; }
+      api('/citas', {
+        method: 'POST',
+        body: { bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota },
+      })
+        .then(function () { avisar('Cita agendada.'); cerrarModalCita(); cargarCalendarioSemana(); })
+        .catch(function (e) { avisar(e.message || 'No se pudo agendar la cita.', true); });
+    } else {
+      var id = document.getElementById('cita-id').value;
+      var atrasado = document.getElementById('cita-atrasado').checked;
+      api('/citas/' + id, {
+        method: 'PUT',
+        body: { bahia_id: bahiaId, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota, atrasado: atrasado },
+      })
+        .then(function () { avisar('Cita actualizada.'); cerrarModalCita(); cargarCalendarioSemana(); })
+        .catch(function (e) { avisar(e.message || 'No se pudo actualizar la cita.', true); });
+    }
+  };
+
+  document.getElementById('cita-eliminar').onclick = function (e) {
+    var btn = e.currentTarget;
+    if (btn.getAttribute('data-confirmar') !== '1') {
+      btn.setAttribute('data-confirmar', '1');
+      btn.textContent = '¿Seguro? Sí, cancelar cita';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = 'Cancelar cita'; }, 3000);
+      return;
+    }
+    var id = document.getElementById('cita-id').value;
+    api('/citas/' + id, { method: 'DELETE' })
+      .then(function () { avisar('Cita cancelada.'); cerrarModalCita(); cargarCalendarioSemana(); })
+      .catch(function (e2) { avisar(e2.message || 'No se pudo cancelar la cita.', true); });
+  };
 
   // ---------- Gestionar equipo (solo admin) ----------
   document.getElementById('btn-equipo').onclick = function () { mostrarVista('equipo'); };
