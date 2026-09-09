@@ -89,7 +89,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/citas/:id -> edita fecha/hora/bahía/nota, o marca "atrasado/problema" (⚠️).
+// PUT /api/citas/:id -> edita fecha/hora/bahía/nota (el estado de atraso/problema ya NO se
+// toca aquí — se maneja posteando un comentario en el chat de la cita, ver más abajo).
 // No permite cambiar el vehículo: si se agendó con la patente equivocada, cancela y crea otra.
 router.put('/:id', async (req, res) => {
   const id = Number(req.params.id);
@@ -99,7 +100,6 @@ router.put('/:id', async (req, res) => {
   const horaInicio = String(body.hora_inicio || '').trim();
   const horaFin = String(body.hora_fin || '').trim();
   const nota = String(body.nota || '').trim();
-  const atrasado = Boolean(body.atrasado);
 
   if (!bahiaId) return res.status(400).json({ error: 'Falta indicar la bahía.' });
   if (!esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
@@ -115,9 +115,9 @@ router.put('/:id', async (req, res) => {
     const r = await pool.query(
       `UPDATE citas
        SET bahia_id = $1, fecha = $2, hora_inicio = $3, hora_fin = $4, nota = $5,
-           atrasado = $6, actualizado_en = now()
-       WHERE id = $7 RETURNING id`,
-      [bahiaId, fecha, horaInicio, horaFin || null, nota || null, atrasado, id]
+           actualizado_en = now()
+       WHERE id = $6 RETURNING id`,
+      [bahiaId, fecha, horaInicio, horaFin || null, nota || null, id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
     res.json({ ok: true });
@@ -125,6 +125,54 @@ router.put('/:id', async (req, res) => {
     // eslint-disable-next-line no-console
     console.error(e);
     res.status(500).json({ error: 'No se pudo actualizar la cita.' });
+  }
+});
+
+// ---------- Chat de comentarios de la cita (atrasos, problemas, avisos) ----------
+
+// GET /api/citas/:id/comentarios -> historial completo del chat de esa cita, más antiguo
+// primero (como cualquier chat).
+router.get('/:id/comentarios', async (req, res) => {
+  const citaId = Number(req.params.id);
+  try {
+    const r = await pool.query(
+      `SELECT id, cita_id, usuario_id, autor_nombre, mensaje, atrasado, creado_en
+       FROM cita_comentarios WHERE cita_id = $1 ORDER BY creado_en ASC, id ASC`,
+      [citaId]
+    );
+    res.json(r.rows);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudieron cargar los comentarios.' });
+  }
+});
+
+// POST /api/citas/:id/comentarios -> agrega un mensaje al chat de la cita. Si se marca
+// "atrasado", ese pasa a ser el estado vigente de la cita (se ve como ⚠️ en el calendario) —
+// para "limpiar" la alerta, basta postear un mensaje nuevo sin marcarlo (ej. "Resuelto").
+router.post('/:id/comentarios', async (req, res) => {
+  const citaId = Number(req.params.id);
+  const mensaje = String((req.body || {}).mensaje || '').trim();
+  const atrasado = Boolean((req.body || {}).atrasado);
+  if (!mensaje) return res.status(400).json({ error: 'Escribe un mensaje.' });
+
+  try {
+    const c = await pool.query('SELECT id FROM citas WHERE id = $1', [citaId]);
+    if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+
+    const autorNombre = (req.usuario && req.usuario.nombre) || 'Alguien del equipo';
+    const r = await pool.query(
+      `INSERT INTO cita_comentarios (cita_id, usuario_id, autor_nombre, mensaje, atrasado)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, cita_id, usuario_id, autor_nombre, mensaje, atrasado, creado_en`,
+      [citaId, req.usuario ? req.usuario.id : null, autorNombre, mensaje, atrasado]
+    );
+    await pool.query('UPDATE citas SET atrasado = $1, actualizado_en = now() WHERE id = $2', [atrasado, citaId]);
+    res.json(r.rows[0]);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo enviar el comentario.' });
   }
 });
 
