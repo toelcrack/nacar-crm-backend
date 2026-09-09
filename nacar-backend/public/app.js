@@ -147,7 +147,7 @@
   }
 
   // ---------- Navegación por pestañas (páginas separadas) ----------
-  var VISTAS = ['vehiculos', 'equipo', 'estadisticas', 'configuracion'];
+  var VISTAS = ['vehiculos', 'taller', 'equipo', 'estadisticas', 'configuracion'];
   function mostrarVista(nombre) {
     VISTAS.forEach(function (v) {
       var sec = document.getElementById('vista-' + v);
@@ -155,11 +155,13 @@
       if (sec) sec.hidden = (v !== nombre);
       if (btn) btn.classList.toggle('activo', v === nombre);
     });
+    if (nombre === 'taller') cargarBahias();
     if (nombre === 'equipo') cargarEquipo();
     if (nombre === 'estadisticas') cargarEstadisticas();
     if (nombre === 'configuracion') cargarPanelConfiguracion();
   }
   document.getElementById('btn-vehiculos').onclick = function () { mostrarVista('vehiculos'); };
+  document.getElementById('btn-taller').onclick = function () { mostrarVista('taller'); };
 
   function intentarLogin() {
     var correo = document.getElementById('login-correo').value.trim();
@@ -592,6 +594,123 @@
       });
     }).catch(function (e) { avisar(e.message || 'No se pudo guardar el vehículo.', true); });
   };
+
+  // ---------- Agenda del taller (bahías: elevadores + patio) ----------
+  var timerBahiaPatente = {};
+
+  function cargarBahias() {
+    var cont = document.getElementById('grid-bahias');
+    api('/bahias').then(function (lista) {
+      cont.innerHTML = lista.map(renderBahiaCard).join('');
+      lista.forEach(function (b) { ligarAccionesBahia(b); });
+    }).catch(function (e) {
+      cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar la agenda del taller.') + '</p>';
+    });
+  }
+
+  function renderBahiaCard(b) {
+    var ocupada = !!b.vehiculo_id;
+    var tipoTxt = b.tipo === 'patio' ? 'Patio de espera' : 'Elevador';
+    var header =
+      '<div class="bahia-header">' +
+        '<div><span class="bahia-nombre">' + escapeHtml(b.nombre) + '</span><br><span class="bahia-tipo">' + tipoTxt + '</span></div>' +
+        '<span class="bahia-estado-chip' + (ocupada ? ' ocupada' : '') + '">' + (ocupada ? 'Ocupada' : 'Disponible') + '</span>' +
+      '</div>';
+
+    if (!ocupada) {
+      return '<div class="bahia-card" id="bahia-' + b.id + '">' + header +
+        '<p class="bahia-disponible-txt">Sin auto asignado.</p>' +
+        '<div class="campo"><label for="bahia-patente-' + b.id + '">Patente</label>' +
+          '<input id="bahia-patente-' + b.id + '" list="bahia-dl-' + b.id + '" type="text" placeholder="AB1234" style="text-transform:uppercase" />' +
+          '<datalist id="bahia-dl-' + b.id + '"></datalist>' +
+        '</div>' +
+        '<div class="campo"><label for="bahia-nota-nueva-' + b.id + '">Nota (opcional)</label>' +
+          '<input id="bahia-nota-nueva-' + b.id + '" type="text" placeholder="Qué se le va a hacer" />' +
+        '</div>' +
+        '<div class="acciones-form"><button class="btn btn-primario" id="bahia-asignar-' + b.id + '" type="button">Asignar</button></div>' +
+      '</div>';
+    }
+
+    var autoLinea = escapeHtml(b.marca || '') + ' ' + escapeHtml(b.modelo || '') + (b.anio ? ' · ' + escapeHtml(b.anio) : '');
+    var notaHtml = b.nota
+      ? '<div class="bahia-nota">' + escapeHtml(b.nota) + '</div>'
+      : '<div class="bahia-nota vacia">Sin nota — no se especificó qué se le está haciendo.</div>';
+
+    return '<div class="bahia-card ocupada" id="bahia-' + b.id + '">' + header +
+      '<div class="patente-badge">' + escapeHtml(b.patente) + '</div>' +
+      '<div class="bahia-auto">' + autoLinea + '</div>' +
+      (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
+      '<div class="bahia-desde">Desde ' + fechaHoraBonita(b.ocupado_desde) + '</div>' +
+      notaHtml +
+      '<div class="bahia-nota-edit" id="bahia-nota-edit-' + b.id + '" hidden>' +
+        '<input type="text" id="bahia-nota-input-' + b.id + '" placeholder="Qué se le está haciendo" value="' + escapeHtml(b.nota || '') + '" />' +
+        '<button class="btn btn-secundario" id="bahia-nota-guardar-' + b.id + '" type="button">Guardar</button>' +
+      '</div>' +
+      '<div class="acciones-form">' +
+        '<button class="btn-texto" id="bahia-editar-nota-' + b.id + '" type="button">Editar nota</button>' +
+        '<button class="btn btn-secundario" id="bahia-liberar-' + b.id + '" type="button">Liberar</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function ligarAccionesBahia(b) {
+    if (!b.vehiculo_id) {
+      var inp = document.getElementById('bahia-patente-' + b.id);
+      inp.addEventListener('input', function () {
+        clearTimeout(timerBahiaPatente[b.id]);
+        timerBahiaPatente[b.id] = setTimeout(function () { llenarDatalistBahia(b.id, inp.value.trim()); }, 300);
+      });
+      document.getElementById('bahia-asignar-' + b.id).onclick = function () { asignarBahia(b.id); };
+      return;
+    }
+    document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
+    document.getElementById('bahia-editar-nota-' + b.id).onclick = function () {
+      var f = document.getElementById('bahia-nota-edit-' + b.id);
+      f.hidden = !f.hidden;
+      if (!f.hidden) document.getElementById('bahia-nota-input-' + b.id).focus();
+    };
+    document.getElementById('bahia-nota-guardar-' + b.id).onclick = function () { guardarNotaBahia(b.id); };
+  }
+
+  function llenarDatalistBahia(bId, q) {
+    var dl = document.getElementById('bahia-dl-' + bId);
+    if (!dl || !q) { if (dl) dl.innerHTML = ''; return; }
+    api('/vehiculos?q=' + encodeURIComponent(q)).then(function (lista) {
+      dl.innerHTML = lista.slice(0, 12).map(function (v) {
+        var etiqueta = (v.marca || '') + ' ' + (v.modelo || '') + (v.cliente_nombre ? ' — ' + v.cliente_nombre : '');
+        return '<option value="' + escapeHtml(v.patente) + '">' + escapeHtml(etiqueta.trim()) + '</option>';
+      }).join('');
+    }).catch(function () {});
+  }
+
+  function asignarBahia(bId) {
+    var patente = document.getElementById('bahia-patente-' + bId).value.trim().toUpperCase();
+    var nota = document.getElementById('bahia-nota-nueva-' + bId).value.trim();
+    if (!patente) { avisar('Escribe la patente del vehículo.', true); return; }
+    api('/bahias/' + bId + '/asignar', { method: 'POST', body: { patente: patente, nota: nota } })
+      .then(function () { avisar('Auto asignado.'); cargarBahias(); })
+      .catch(function (e) { avisar(e.message || 'No se pudo asignar el vehículo.', true); });
+  }
+
+  function liberarBahia(bId, btn) {
+    if (btn.getAttribute('data-confirmar') !== '1') {
+      btn.setAttribute('data-confirmar', '1');
+      btn.textContent = '¿Seguro? Sí, liberar';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = 'Liberar'; }, 3000);
+      return;
+    }
+    api('/bahias/' + bId + '/liberar', { method: 'POST' })
+      .then(function () { avisar('Bahía liberada.'); cargarBahias(); })
+      .catch(function (e) { avisar(e.message || 'No se pudo liberar la bahía.', true); });
+  }
+
+  function guardarNotaBahia(bId) {
+    var nota = document.getElementById('bahia-nota-input-' + bId).value.trim();
+    api('/bahias/' + bId + '/nota', { method: 'PUT', body: { nota: nota } })
+      .then(function () { avisar('Nota actualizada.'); cargarBahias(); })
+      .catch(function (e) { avisar(e.message || 'No se pudo actualizar la nota.', true); });
+  }
 
   // ---------- Gestionar equipo (solo admin) ----------
   document.getElementById('btn-equipo').onclick = function () { mostrarVista('equipo'); };
