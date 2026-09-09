@@ -164,6 +164,9 @@
   .grid-bahias{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;}
   .bahia-card{background:var(--glass-bg);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px 20px;}
   .bahia-card.ocupada{border-color:var(--glass-border);background:rgba(217,100,46,0.07);}
+  .bahia-card.atrasado{border-color:var(--danger-border);background:var(--danger-bg);}
+  .bahia-estado-chip.atrasado-chip{background:var(--danger-bg);border-color:var(--danger-border);
+    color:var(--danger-text);margin:0 0 10px;display:inline-block;}
   .bahia-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
   .bahia-nombre{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;color:var(--white);}
   .bahia-tipo{font-size:11px;color:var(--gray-3);text-transform:uppercase;letter-spacing:0.04em;}
@@ -225,6 +228,24 @@
   .modal-caja .campo{margin-bottom:10px;}
   .chk-atrasado{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--danger-text);margin:10px 0 4px;}
   .chk-atrasado input{width:16px;height:16px;}
+
+  /* Chat de comentarios por cita (avisos, atrasos, problemas) */
+  .cita-chat-wrap{margin-top:8px;}
+  .cita-chat-lista{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;
+    padding:4px 2px;margin-bottom:10px;}
+  .cita-chat-msg{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px;padding:8px 10px;font-size:13px;}
+  .cita-chat-msg.atrasado{background:var(--danger-bg);border-color:var(--danger-border);}
+  .cita-chat-autor{font-family:'Oswald',sans-serif;font-weight:600;color:var(--white);font-size:12px;}
+  .cita-chat-msg.atrasado .cita-chat-autor{color:var(--danger-text);}
+  .cita-chat-hora{color:var(--gray-3);font-size:11px;margin-left:6px;font-weight:400;font-family:inherit;}
+  .cita-chat-texto{margin:4px 0 0;color:var(--white-soft);}
+  .cita-chat-msg.atrasado .cita-chat-texto{color:var(--danger-text);}
+  .cita-chat-vacio{color:var(--gray-3);font-style:italic;font-size:13px;}
+  .cita-chat-input{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .cita-chat-input input[type="text"]{flex:1;min-width:140px;}
+  .chk-atrasado-msg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--danger-text);white-space:nowrap;}
+  .chk-atrasado-msg input{width:14px;height:14px;}
 </style>
 </head>
 <body>
@@ -397,9 +418,16 @@
     <div class="campo"><label for="cita-nota">Nota (qué se le va a hacer)</label>
       <input id="cita-nota" type="text" placeholder="Ej: cambio de aceite y filtros" />
     </div>
-    <label class="chk-atrasado" id="cita-atrasado-wrap" hidden>
-      <input type="checkbox" id="cita-atrasado" /> ⚠️ Marcar atraso / problema con este auto
-    </label>
+    <div class="cita-chat-wrap" id="cita-chat-wrap" hidden>
+      <p class="campo-label-suelto" style="margin-top:4px">Comentarios (avisos, atrasos, problemas)</p>
+      <div id="cita-chat-lista" class="cita-chat-lista"><p class="sin-mant">Cargando...</p></div>
+      <div class="cita-chat-input">
+        <input id="cita-chat-mensaje" type="text" placeholder="Escribe un mensaje para este auto..." />
+        <label class="chk-atrasado-msg"><input type="checkbox" id="cita-chat-atrasado" /> ⚠️ Atraso/problema</label>
+        <button class="btn btn-secundario" id="cita-chat-enviar" type="button">Enviar</button>
+      </div>
+    </div>
+    <p class="campo-label-suelto" id="cita-chat-hint" hidden>Podrás dejar comentarios (avisos, atrasos, problemas) una vez que guardes esta cita.</p>
     <div class="acciones-form" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <button class="btn-texto" id="cita-eliminar" type="button" hidden>Cancelar cita</button>
       <div style="display:flex;gap:8px;margin-left:auto">

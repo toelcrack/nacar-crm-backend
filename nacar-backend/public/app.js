@@ -635,19 +635,18 @@
     var notaHtml = b.nota
       ? '<div class="bahia-nota">' + escapeHtml(b.nota) + '</div>'
       : '<div class="bahia-nota vacia">Sin nota — no se especificó qué se le está haciendo.</div>';
+    var atrasadoHtml = b.atrasado
+      ? '<span class="bahia-estado-chip atrasado-chip">⚠️ Atraso / problema</span>' : '';
 
-    return '<div class="bahia-card ocupada" id="bahia-' + b.id + '">' + header +
+    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '">' + header +
       '<div class="patente-badge">' + escapeHtml(b.patente) + '</div>' +
+      atrasadoHtml +
       '<div class="bahia-auto">' + autoLinea + '</div>' +
       (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
-      '<div class="bahia-desde">Desde ' + fechaHoraBonita(b.ocupado_desde) + '</div>' +
+      '<div class="bahia-desde">Desde ' + horaCorta(b.hora_inicio) + ' (hoy)</div>' +
       notaHtml +
-      '<div class="bahia-nota-edit" id="bahia-nota-edit-' + b.id + '" hidden>' +
-        '<input type="text" id="bahia-nota-input-' + b.id + '" placeholder="Qué se le está haciendo" value="' + escapeHtml(b.nota || '') + '" />' +
-        '<button class="btn btn-secundario" id="bahia-nota-guardar-' + b.id + '" type="button">Guardar</button>' +
-      '</div>' +
       '<div class="acciones-form">' +
-        '<button class="btn-texto" id="bahia-editar-nota-' + b.id + '" type="button">Editar nota</button>' +
+        '<button class="btn-texto" id="bahia-detalle-' + b.id + '" type="button">Ver detalle y comentarios</button>' +
         '<button class="btn btn-secundario" id="bahia-liberar-' + b.id + '" type="button">Liberar</button>' +
       '</div>' +
     '</div>';
@@ -664,12 +663,22 @@
       return;
     }
     document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
-    document.getElementById('bahia-editar-nota-' + b.id).onclick = function () {
-      var f = document.getElementById('bahia-nota-edit-' + b.id);
-      f.hidden = !f.hidden;
-      if (!f.hidden) document.getElementById('bahia-nota-input-' + b.id).focus();
+    document.getElementById('bahia-detalle-' + b.id).onclick = function () {
+      abrirModalCita('editar', {
+        id: b.cita_id,
+        bahia_id: b.id,
+        bahia_nombre: b.nombre,
+        hora_inicio: b.hora_inicio,
+        hora_fin: b.hora_fin,
+        nota: b.nota,
+        atrasado: b.atrasado,
+        patente: b.patente,
+        marca: b.marca,
+        modelo: b.modelo,
+        cliente_nombre: b.cliente_nombre,
+        fecha: ymd(new Date()),
+      });
     };
-    document.getElementById('bahia-nota-guardar-' + b.id).onclick = function () { guardarNotaBahia(b.id); };
   }
 
   function llenarDatalistBahia(bId, q) {
@@ -687,8 +696,10 @@
     var patente = document.getElementById('bahia-patente-' + bId).value.trim().toUpperCase();
     var nota = document.getElementById('bahia-nota-nueva-' + bId).value.trim();
     if (!patente) { avisar('Escribe la patente del vehículo.', true); return; }
+    // Asignar "ahora" crea una cita de hoy sin hora de término — por eso, apenas se asigna,
+    // ya aparece también en el calendario de más abajo (misma tabla, misma fuente de verdad).
     api('/bahias/' + bId + '/asignar', { method: 'POST', body: { patente: patente, nota: nota } })
-      .then(function () { avisar('Auto asignado.'); cargarBahias(); })
+      .then(function () { avisar('Auto asignado.'); cargarBahias(); cargarCalendarioSemana(); })
       .catch(function (e) { avisar(e.message || 'No se pudo asignar el vehículo.', true); });
   }
 
@@ -700,16 +711,11 @@
       btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = 'Liberar'; }, 3000);
       return;
     }
+    // Liberar le pone hora de término a la cita en curso (no la borra) — queda en el
+    // calendario de hoy como un bloque ya terminado.
     api('/bahias/' + bId + '/liberar', { method: 'POST' })
-      .then(function () { avisar('Bahía liberada.'); cargarBahias(); })
+      .then(function () { avisar('Bahía liberada.'); cargarBahias(); cargarCalendarioSemana(); })
       .catch(function (e) { avisar(e.message || 'No se pudo liberar la bahía.', true); });
-  }
-
-  function guardarNotaBahia(bId) {
-    var nota = document.getElementById('bahia-nota-input-' + bId).value.trim();
-    api('/bahias/' + bId + '/nota', { method: 'PUT', body: { nota: nota } })
-      .then(function () { avisar('Nota actualizada.'); cargarBahias(); })
-      .catch(function (e) { avisar(e.message || 'No se pudo actualizar la nota.', true); });
   }
 
   // ---------- Calendario de mantenciones futuras por bahía ----------
@@ -827,17 +833,18 @@
 
     var campoPatente = document.getElementById('cita-campo-patente');
     var vehiculoTxt = document.getElementById('cita-vehiculo-txt');
-    var atrasadoWrap = document.getElementById('cita-atrasado-wrap');
     var btnEliminar = document.getElementById('cita-eliminar');
+    var chatWrap = document.getElementById('cita-chat-wrap');
+    var chatHint = document.getElementById('cita-chat-hint');
 
     if (modo === 'nueva') {
       campoPatente.hidden = false;
       document.getElementById('cita-patente').value = '';
       document.getElementById('cita-dl-patente').innerHTML = '';
       vehiculoTxt.hidden = true;
-      atrasadoWrap.hidden = true;
-      document.getElementById('cita-atrasado').checked = false;
       btnEliminar.hidden = true;
+      chatWrap.hidden = true;
+      chatHint.hidden = false;
       document.getElementById('cita-fecha').value = datos.fecha || '';
       document.getElementById('cita-hora-inicio').value = '';
       document.getElementById('cita-hora-fin').value = '';
@@ -848,8 +855,6 @@
       var autoLinea = escapeHtml(datos.patente) + ' — ' + escapeHtml(datos.marca || '') + ' ' +
         escapeHtml(datos.modelo || '') + (datos.cliente_nombre ? ' · ' + escapeHtml(datos.cliente_nombre) : '');
       vehiculoTxt.innerHTML = autoLinea;
-      atrasadoWrap.hidden = false;
-      document.getElementById('cita-atrasado').checked = !!datos.atrasado;
       btnEliminar.hidden = false;
       btnEliminar.removeAttribute('data-confirmar');
       btnEliminar.textContent = 'Cancelar cita';
@@ -857,9 +862,59 @@
       document.getElementById('cita-hora-inicio').value = horaCorta(datos.hora_inicio);
       document.getElementById('cita-hora-fin').value = horaCorta(datos.hora_fin);
       document.getElementById('cita-nota').value = datos.nota || '';
+      chatHint.hidden = true;
+      chatWrap.hidden = false;
+      document.getElementById('cita-chat-mensaje').value = '';
+      document.getElementById('cita-chat-atrasado').checked = false;
+      cargarComentariosCita(datos.id);
     }
     modal.hidden = false;
   }
+
+  // ---------- Chat de comentarios de la cita (avisos, atrasos, problemas) ----------
+  function cargarComentariosCita(citaId) {
+    var cont = document.getElementById('cita-chat-lista');
+    cont.innerHTML = '<p class="sin-mant">Cargando...</p>';
+    api('/citas/' + citaId + '/comentarios').then(function (lista) {
+      if (!lista.length) {
+        cont.innerHTML = '<p class="cita-chat-vacio">Todavía no hay comentarios para este auto.</p>';
+        return;
+      }
+      cont.innerHTML = lista.map(renderComentarioChat).join('');
+      cont.scrollTop = cont.scrollHeight;
+    }).catch(function () {
+      cont.innerHTML = '<p class="cita-chat-vacio">No se pudieron cargar los comentarios.</p>';
+    });
+  }
+
+  function renderComentarioChat(c) {
+    return '<div class="cita-chat-msg' + (c.atrasado ? ' atrasado' : '') + '">' +
+      '<span class="cita-chat-autor">' + (c.atrasado ? '⚠️ ' : '') + escapeHtml(c.autor_nombre) +
+        '<span class="cita-chat-hora">' + fechaHoraBonita(c.creado_en) + '</span></span>' +
+      '<p class="cita-chat-texto">' + escapeHtml(c.mensaje) + '</p>' +
+    '</div>';
+  }
+
+  document.getElementById('cita-chat-enviar').onclick = function () {
+    var citaId = document.getElementById('cita-id').value;
+    var mensaje = document.getElementById('cita-chat-mensaje').value.trim();
+    var atrasado = document.getElementById('cita-chat-atrasado').checked;
+    if (!citaId) return;
+    if (!mensaje) { avisar('Escribe un mensaje antes de enviar.', true); return; }
+    api('/citas/' + citaId + '/comentarios', { method: 'POST', body: { mensaje: mensaje, atrasado: atrasado } })
+      .then(function () {
+        document.getElementById('cita-chat-mensaje').value = '';
+        document.getElementById('cita-chat-atrasado').checked = false;
+        cargarComentariosCita(citaId);
+        // el estado de atraso de la cita pudo haber cambiado: refrescar tarjetas y calendario.
+        cargarBahias();
+        cargarCalendarioSemana();
+      })
+      .catch(function (e) { avisar(e.message || 'No se pudo enviar el comentario.', true); });
+  };
+  document.getElementById('cita-chat-mensaje').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('cita-chat-enviar').click(); }
+  });
 
   function cerrarModalCita() {
     document.getElementById('modal-cita').hidden = true;
@@ -908,12 +963,11 @@
         .catch(function (e) { avisar(e.message || 'No se pudo agendar la cita.', true); });
     } else {
       var id = document.getElementById('cita-id').value;
-      var atrasado = document.getElementById('cita-atrasado').checked;
       api('/citas/' + id, {
         method: 'PUT',
-        body: { bahia_id: bahiaId, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota, atrasado: atrasado },
+        body: { bahia_id: bahiaId, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota },
       })
-        .then(function () { avisar('Cita actualizada.'); cerrarModalCita(); cargarCalendarioSemana(); })
+        .then(function () { avisar('Cita actualizada.'); cerrarModalCita(); cargarBahias(); cargarCalendarioSemana(); })
         .catch(function (e) { avisar(e.message || 'No se pudo actualizar la cita.', true); });
     }
   };
@@ -929,7 +983,7 @@
     }
     var id = document.getElementById('cita-id').value;
     api('/citas/' + id, { method: 'DELETE' })
-      .then(function () { avisar('Cita cancelada.'); cerrarModalCita(); cargarCalendarioSemana(); })
+      .then(function () { avisar('Cita cancelada.'); cerrarModalCita(); cargarBahias(); cargarCalendarioSemana(); })
       .catch(function (e2) { avisar(e2.message || 'No se pudo cancelar la cita.', true); });
   };
 
