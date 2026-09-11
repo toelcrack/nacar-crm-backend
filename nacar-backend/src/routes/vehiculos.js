@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const { consultarPatenteNacional } = require('../getapi');
+const { sugerirFiltros } = require('../filtros');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -76,12 +77,30 @@ router.post('/', async (req, res) => {
 //   3) Si ni la base propia ni el registro nacional la tienen (o la API falla por cualquier
 //      motivo: key inválida, caída, timeout), se responde 404 y el frontend ofrece el
 //      formulario de carga manual — nunca se bloquea al mecánico por un problema de la API.
+// Agrega, sin poder nunca hacer fallar la respuesta del Simulador, las sugerencias de filtro
+// (historial propio + catálogo Mann — ver src/filtros.js) al objeto del vehículo ya identificado.
+async function conFiltrosSugeridos(vehiculo) {
+  try {
+    const filtrosSugeridos = await sugerirFiltros(vehiculo);
+    return Object.assign({ filtrosSugeridos }, vehiculo);
+  } catch (e) {
+    // Si algo falla acá (ej. el catálogo Mann todavía no se importó), el Simulador sigue
+    // funcionando igual, solo sin sugerencias de filtro.
+    // eslint-disable-next-line no-console
+    console.error('Error calculando filtrosSugeridos:', e.message);
+    return Object.assign({ filtrosSugeridos: null }, vehiculo);
+  }
+}
+
 router.get('/buscar/:patente', async (req, res) => {
   const patenteLimpia = String(req.params.patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'Falta la patente.' });
 
   const r = await pool.query('SELECT * FROM vehiculos WHERE patente = $1', [patenteLimpia]);
-  if (r.rows[0]) return res.json(Object.assign({ _origen: 'base' }, r.rows[0]));
+  if (r.rows[0]) {
+    const conFiltros = await conFiltrosSugeridos(r.rows[0]);
+    return res.json(Object.assign({ _origen: 'base' }, conFiltros));
+  }
 
   let datosNacionales = null;
   try {
@@ -100,7 +119,8 @@ router.get('/buscar/:patente', async (req, res) => {
     });
   }
 
-  res.json(Object.assign({ _origen: 'api_nacional', patente: patenteLimpia }, datosNacionales));
+  const conFiltros = await conFiltrosSugeridos(datosNacionales);
+  res.json(Object.assign({ _origen: 'api_nacional', patente: patenteLimpia }, conFiltros));
 });
 
 // GET /api/vehiculos/:id  -> detalle + historial de mantenciones
