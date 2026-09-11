@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
+const { consultarPatenteNacional } = require('../getapi');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -40,15 +41,15 @@ router.get('/', async (req, res) => {
 
 // POST /api/vehiculos  -> crear vehiculo nuevo
 router.post('/', async (req, res) => {
-  const { patente, marca, modelo, anio, combustible, clienteNombre, clienteCorreo } = req.body || {};
+  const { patente, marca, modelo, anio, combustible, motor, vin, clienteNombre, clienteCorreo } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
   try {
     const r = await pool.query(
-      `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, cliente_nombre, cliente_correo, creado_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (clienteNombre || '').trim(), clienteCorreo || '', req.usuario.id]
+      `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, vin, cliente_nombre, cliente_correo, creado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (motor || '').trim(), (vin || '').trim().toUpperCase(), (clienteNombre || '').trim(), clienteCorreo || '', req.usuario.id]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
@@ -58,6 +59,70 @@ router.post('/', async (req, res) => {
     // eslint-disable-next-line no-console
     console.error(e);
     res.status(500).json({ error: 'No se pudo guardar el vehículo.' });
+  }
+});
+
+// GET /api/vehiculos/buscar/:patente -> coincidencia EXACTA por patente (no búsqueda difusa).
+// Es lo que usa el Simulador de mantención para "reconocer" un auto:
+//   1) Si ya está en la base del taller, se devuelve al instante desde ahí (_origen: 'base').
+//   2) Si no está, y GETAPI_API_KEY está configurada (contratado 11-sep-2026), se consulta el
+//      registro nacional de vehículos (GetAPI) por esa patente. Si la encuentra, se GUARDA
+//      automáticamente en la base del taller (_origen: 'api_nacional') — así la próxima vez
+//      que se busque esa misma patente, ya está en el paso 1) y no se vuelve a gastar consulta.
+//   3) Si ni la base propia ni el registro nacional la tienen (o la API falla por cualquier
+//      motivo: key inválida, caída, timeout), se responde 404 y el frontend ofrece el
+//      formulario de carga manual — nunca se bloquea al mecánico por un problema de la API.
+router.get('/buscar/:patente', async (req, res) => {
+  const patenteLimpia = String(req.params.patente || '').trim().toUpperCase();
+  if (!patenteLimpia) return res.status(400).json({ error: 'Falta la patente.' });
+
+  const r = await pool.query('SELECT * FROM vehiculos WHERE patente = $1', [patenteLimpia]);
+  if (r.rows[0]) return res.json(Object.assign({ _origen: 'base' }, r.rows[0]));
+
+  let datosNacionales = null;
+  try {
+    datosNacionales = await consultarPatenteNacional(patenteLimpia);
+  } catch (e) {
+    // No bloquea al mecánico: se loguea para que el administrador note si la key quedó mal
+    // configurada o el servicio está caído, y se sigue igual al flujo de carga manual.
+    // eslint-disable-next-line no-console
+    console.error('Error consultando GetAPI para', patenteLimpia, '-', e.message);
+  }
+
+  if (!datosNacionales) {
+    return res.status(404).json({
+      error: 'No encontrado en la base del taller ni en el registro nacional.',
+      consultoRegistroNacional: !!process.env.GETAPI_API_KEY,
+    });
+  }
+
+  try {
+    const ins = await pool.query(
+      `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, vin, cliente_nombre, cliente_correo, creado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [
+        patenteLimpia,
+        datosNacionales.marca,
+        datosNacionales.modelo,
+        datosNacionales.anio,
+        datosNacionales.combustible,
+        datosNacionales.motor,
+        datosNacionales.vin,
+        '',
+        '',
+        req.usuario.id,
+      ]
+    );
+    res.json(Object.assign({ _origen: 'api_nacional' }, ins.rows[0]));
+  } catch (e) {
+    if (e.code === '23505') {
+      // Carrera rara: otra petición guardó la misma patente justo antes. No es un error real.
+      const existente = await pool.query('SELECT * FROM vehiculos WHERE patente = $1', [patenteLimpia]);
+      if (existente.rows[0]) return res.json(Object.assign({ _origen: 'base' }, existente.rows[0]));
+    }
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'Se identificó el auto en el registro nacional pero no se pudo guardar. Intenta de nuevo.' });
   }
 });
 
@@ -81,17 +146,17 @@ router.get('/:id', async (req, res) => {
 // PUT /api/vehiculos/:id  -> editar datos del vehículo (solo administrador)
 router.put('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const { patente, marca, modelo, anio, combustible, clienteNombre, clienteCorreo } = req.body || {};
+  const { patente, marca, modelo, anio, combustible, motor, vin, clienteNombre, clienteCorreo } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
   try {
     const r = await pool.query(
       `UPDATE vehiculos SET
-         patente=$1, marca=$2, modelo=$3, anio=$4, combustible=$5, cliente_nombre=$6, cliente_correo=$7
-       WHERE id=$8
+         patente=$1, marca=$2, modelo=$3, anio=$4, combustible=$5, motor=$6, vin=$7, cliente_nombre=$8, cliente_correo=$9
+       WHERE id=$10
        RETURNING *`,
-      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (clienteNombre || '').trim(), clienteCorreo || '', id]
+      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (motor || '').trim(), (vin || '').trim().toUpperCase(), (clienteNombre || '').trim(), clienteCorreo || '', id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
     res.json(r.rows[0]);
