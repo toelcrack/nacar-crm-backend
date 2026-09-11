@@ -10,7 +10,8 @@
     "migrar:historico": "node src/migrate/importar_historico.js",
     "crear:admin": "node src/migrate/crear_admin.js",
     "sembrar:marcas": "node src/migrate/sembrar_marcas.js",
-    "sembrar:bahias": "node src/migrate/sembrar_bahias.js"
+    "sembrar:bahias": "node src/migrate/sembrar_bahias.js",
+    "importar:catalogo-mann": "node src/migrate/importar_catalogo_mann.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
