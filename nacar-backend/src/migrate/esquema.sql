@@ -18,11 +18,19 @@ CREATE TABLE IF NOT EXISTS vehiculos (
   modelo TEXT,
   anio TEXT,
   combustible TEXT NOT NULL DEFAULT 'bencina' CHECK (combustible IN ('bencina','diesel')),
+  motor TEXT,
+  vin TEXT,
   cliente_nombre TEXT,
   cliente_correo TEXT,
   creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
   creado_por INTEGER REFERENCES usuarios(id)
 );
+
+-- "motor" y "vin" se agregaron el 11-sep-2026 (ver "Simulador de mantención" más abajo) a una
+-- tabla que ya existía desde el inicio — ALTER TABLE porque CREATE TABLE IF NOT EXISTS no
+-- agrega columnas nuevas a una tabla que ya existe en producción.
+ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS motor TEXT;
+ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS vin TEXT;
 
 CREATE TABLE IF NOT EXISTS mantenciones (
   id SERIAL PRIMARY KEY,
