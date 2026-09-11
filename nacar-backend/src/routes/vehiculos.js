@@ -66,9 +66,13 @@ router.post('/', async (req, res) => {
 // Es lo que usa el Simulador de mantención para "reconocer" un auto:
 //   1) Si ya está en la base del taller, se devuelve al instante desde ahí (_origen: 'base').
 //   2) Si no está, y GETAPI_API_KEY está configurada (contratado 11-sep-2026), se consulta el
-//      registro nacional de vehículos (GetAPI) por esa patente. Si la encuentra, se GUARDA
-//      automáticamente en la base del taller (_origen: 'api_nacional') — así la próxima vez
-//      que se busque esa misma patente, ya está en el paso 1) y no se vuelve a gastar consulta.
+//      registro nacional de vehículos (GetAPI) por esa patente CADA VEZ que se busca — a
+//      propósito no se guarda ni se cachea nada acá (decisión del usuario: prefiere pagar la
+//      consulta de nuevo cada vez antes que meter una tabla de caché que en algún momento
+//      pueda hacer más lento el CRM). El resultado se devuelve (_origen: 'api_nacional') SIN
+//      insertarlo en "vehiculos" — el auto NO se registra como cliente del taller solo por
+//      haber sido buscado; el frontend ofrece un botón para registrarlo recién cuando de
+//      verdad se decide darle un servicio (ver registrarVehiculoIdentificado en app.js).
 //   3) Si ni la base propia ni el registro nacional la tienen (o la API falla por cualquier
 //      motivo: key inválida, caída, timeout), se responde 404 y el frontend ofrece el
 //      formulario de carga manual — nunca se bloquea al mecánico por un problema de la API.
@@ -96,34 +100,7 @@ router.get('/buscar/:patente', async (req, res) => {
     });
   }
 
-  try {
-    const ins = await pool.query(
-      `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, vin, cliente_nombre, cliente_correo, creado_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [
-        patenteLimpia,
-        datosNacionales.marca,
-        datosNacionales.modelo,
-        datosNacionales.anio,
-        datosNacionales.combustible,
-        datosNacionales.motor,
-        datosNacionales.vin,
-        '',
-        '',
-        req.usuario.id,
-      ]
-    );
-    res.json(Object.assign({ _origen: 'api_nacional' }, ins.rows[0]));
-  } catch (e) {
-    if (e.code === '23505') {
-      // Carrera rara: otra petición guardó la misma patente justo antes. No es un error real.
-      const existente = await pool.query('SELECT * FROM vehiculos WHERE patente = $1', [patenteLimpia]);
-      if (existente.rows[0]) return res.json(Object.assign({ _origen: 'base' }, existente.rows[0]));
-    }
-    // eslint-disable-next-line no-console
-    console.error(e);
-    res.status(500).json({ error: 'Se identificó el auto en el registro nacional pero no se pudo guardar. Intenta de nuevo.' });
-  }
+  res.json(Object.assign({ _origen: 'api_nacional', patente: patenteLimpia }, datosNacionales));
 });
 
 // GET /api/vehiculos/:id  -> detalle + historial de mantenciones
