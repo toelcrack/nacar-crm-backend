@@ -127,3 +127,30 @@ CREATE TABLE IF NOT EXISTS cita_comentarios (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cita_comentarios_cita ON cita_comentarios (cita_id);
+
+-- Catálogo Mann Filter (agregado 11-sep-2026): referencia de qué filtro (código Mann) usa cada
+-- combinación marca/modelo/motor/año, según el catálogo oficial del fabricante. Es tabla de
+-- referencia pura (no depende de nuestros vehículos ni mantenciones) que se recarga completa
+-- cada vez que se corre el importador (TRUNCATE + INSERT), porque no tiene una llave natural
+-- única por fila y el archivo fuente (Excel de Mann) se reemplaza entero cuando cambia.
+-- Se usa junto con "nuestra experiencia" (mantenciones) para sugerir filtros en el Simulador:
+-- ver src/filtros.js para la lógica de matching de ambas fuentes.
+CREATE TABLE IF NOT EXISTS catalogo_mann (
+  id SERIAL PRIMARY KEY,
+  marca TEXT NOT NULL,
+  marca_norm TEXT NOT NULL,
+  modelo TEXT NOT NULL,
+  motor TEXT,
+  anios_texto TEXT,
+  anio_desde INTEGER,
+  anio_hasta INTEGER,
+  anio_wildcard BOOLEAN NOT NULL DEFAULT false,
+  es_diesel BOOLEAN NOT NULL DEFAULT false,
+  filtro_aire_codigo TEXT,
+  filtro_aceite_codigo TEXT,
+  filtro_combustible_codigo TEXT,
+  filtro_polen_codigo TEXT,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalogo_mann_marca_norm ON catalogo_mann (marca_norm);
