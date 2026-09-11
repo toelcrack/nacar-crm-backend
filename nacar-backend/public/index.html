@@ -246,6 +246,11 @@
   .cita-chat-input input[type="text"]{flex:1;min-width:140px;}
   .chk-atrasado-msg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--danger-text);white-space:nowrap;}
   .chk-atrasado-msg input{width:14px;height:14px;}
+
+  /* Simulador de mantención */
+  #sim-resultado{margin-top:20px;}
+  .sim-datos{font-size:14px;color:var(--white-soft);margin-top:10px;line-height:1.7;}
+  .sim-datos strong{color:var(--white);}
 </style>
 </head>
 <body>
@@ -278,6 +283,7 @@
   <nav class="tabs-nav">
     <button class="tab-btn activo" id="btn-vehiculos" type="button">Vehículos</button>
     <button class="tab-btn" id="btn-taller" type="button">Taller</button>
+    <button class="tab-btn" id="btn-simulador" type="button">Simulador</button>
     <button class="tab-btn" id="btn-equipo" type="button" hidden>Gestionar equipo</button>
     <button class="tab-btn" id="btn-estadisticas" type="button" hidden>Estadísticas</button>
     <button class="tab-btn" id="btn-configuracion" type="button" hidden>Configuración</button>
@@ -348,6 +354,16 @@
           <div id="grid-calendario" class="grid-calendario"><p class="sin-mant">Cargando...</p></div>
         </div>
       </div>
+    </section>
+
+    <section id="vista-simulador" class="vista" hidden>
+      <h2 class="vista-titulo">Simulador de mantención</h2>
+      <p class="lead">Escribe la patente de un auto para identificarlo: marca, modelo, año, combustible, motor y VIN/chasis. Reconoce al instante los autos que ya están en tu base, y si no está, consulta automáticamente el registro nacional de vehículos de Chile — la primera vez que se busca cada patente nueva se guarda para siempre, así que después ya no vuelve a consultar el servicio externo para esa misma patente.</p>
+      <div class="toolbar">
+        <input id="sim-patente" type="text" placeholder="Patente, ej: AB1234" autocomplete="off" style="text-transform:uppercase" />
+        <button class="btn btn-primario" id="btn-sim-buscar" type="button">Identificar auto</button>
+      </div>
+      <div id="sim-resultado"></div>
     </section>
 
     <section id="vista-equipo" class="vista" hidden>

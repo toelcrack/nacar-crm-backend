@@ -147,7 +147,7 @@
   }
 
   // ---------- Navegación por pestañas (páginas separadas) ----------
-  var VISTAS = ['vehiculos', 'taller', 'equipo', 'estadisticas', 'configuracion'];
+  var VISTAS = ['vehiculos', 'taller', 'simulador', 'equipo', 'estadisticas', 'configuracion'];
   function mostrarVista(nombre) {
     VISTAS.forEach(function (v) {
       var sec = document.getElementById('vista-' + v);
@@ -156,12 +156,14 @@
       if (btn) btn.classList.toggle('activo', v === nombre);
     });
     if (nombre === 'taller') { cargarBahias(); cargarCalendarioSemana(); }
+    if (nombre === 'simulador') { document.getElementById('sim-patente').focus(); }
     if (nombre === 'equipo') cargarEquipo();
     if (nombre === 'estadisticas') cargarEstadisticas();
     if (nombre === 'configuracion') cargarPanelConfiguracion();
   }
   document.getElementById('btn-vehiculos').onclick = function () { mostrarVista('vehiculos'); };
   document.getElementById('btn-taller').onclick = function () { mostrarVista('taller'); };
+  document.getElementById('btn-simulador').onclick = function () { mostrarVista('simulador'); };
 
   function intentarLogin() {
     var correo = document.getElementById('login-correo').value.trim();
@@ -986,6 +988,114 @@
       .then(function () { avisar('Cita cancelada.'); cerrarModalCita(); cargarBahias(); cargarCalendarioSemana(); })
       .catch(function (e2) { avisar(e2.message || 'No se pudo cancelar la cita.', true); });
   };
+
+  // ---------- Simulador de mantención ----------
+  // Paso 1 (lo que se construyó ahora): reconocer un auto por su patente. Si ya está en la
+  // base del taller, se identifica al instante (marca/modelo/año/combustible/motor). Si no,
+  // todavía no hay una fuente GRATUITA para identificar cualquier patente de Chile — se le
+  // explica eso al usuario y se le ofrece completarlo a mano una sola vez, quedando guardado
+  // para la próxima. El plan de mantención sugerido (paso 2) se construye después de esto.
+
+  function buscarSimulador() {
+    var patente = document.getElementById('sim-patente').value.trim().toUpperCase();
+    var cont = document.getElementById('sim-resultado');
+    if (!patente) { avisar('Escribe una patente para identificar.', true); return; }
+    cont.innerHTML = '<p class="sin-mant">Buscando...</p>';
+    api('/vehiculos/buscar/' + encodeURIComponent(patente))
+      .then(function (v) { renderSimEncontrado(v); })
+      .catch(function (e) {
+        if (e.status === 404) {
+          var consultoNacional = !!(e.data && e.data.consultoRegistroNacional);
+          renderSimNoEncontrado(patente, consultoNacional);
+          return;
+        }
+        cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo buscar la patente.') + '</p>';
+      });
+  }
+  document.getElementById('btn-sim-buscar').onclick = buscarSimulador;
+  document.getElementById('sim-patente').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); buscarSimulador(); }
+  });
+
+  function renderSimEncontrado(v) {
+    var cont = document.getElementById('sim-resultado');
+    var combustibleTxt = v.combustible === 'diesel' ? 'Petróleo (diésel)' : 'Bencina';
+    var notaOrigen = v._origen === 'api_nacional'
+      ? '🌐 Identificado automáticamente en el registro nacional de vehículos de Chile — quedó guardado en tu base, la próxima vez que busques esta patente se reconoce al instante sin volver a consultar el servicio.'
+      : '✅ Reconocido al instante: ya estaba registrado en tu base del taller.';
+    cont.innerHTML =
+      '<div class="panel">' +
+        '<div class="patente-badge">' + escapeHtml(v.patente) + '</div>' +
+        '<div class="sim-datos">' +
+          '<div><strong>Marca y modelo:</strong> ' + escapeHtml((v.marca || '—') + ' ' + (v.modelo || '')) + '</div>' +
+          '<div><strong>Año:</strong> ' + escapeHtml(v.anio || '—') + '</div>' +
+          '<div><strong>Combustible:</strong> ' + combustibleTxt + '</div>' +
+          '<div><strong>Motor:</strong> ' + escapeHtml(v.motor || 'No registrado todavía') + '</div>' +
+          '<div><strong>VIN / chasis:</strong> ' + escapeHtml(v.vin || 'No registrado todavía') + '</div>' +
+          (v.cliente_nombre ? '<div><strong>Cliente:</strong> ' + escapeHtml(v.cliente_nombre) + '</div>' : '') +
+        '</div>' +
+        '<p class="nota-registro">' + notaOrigen + '</p>' +
+        '<div class="acciones-form"><button class="btn btn-secundario" id="sim-ver-vehiculo" type="button">Ver su historial en Vehículos</button></div>' +
+      '</div>';
+    document.getElementById('sim-ver-vehiculo').onclick = function () {
+      document.getElementById('buscar').value = v.patente;
+      mostrarVista('vehiculos');
+      cargarVehiculos();
+    };
+  }
+
+  function renderSimNoEncontrado(patente, consultoRegistroNacional) {
+    var cont = document.getElementById('sim-resultado');
+    var explicacion = consultoRegistroNacional
+      ? 'Se buscó en tu base del taller Y en el registro nacional de vehículos de Chile, y ninguno de los dos la tiene registrada — puede ser una patente muy nueva, provisoria, o de un tipo de vehículo que el registro no cubre. Complétala a mano esta vez y quedará guardada — la próxima vez que la escribas aquí, se reconocerá al instante.'
+      : 'Identificar automáticamente CUALQUIER patente de Chile (no solo las que ya tienes) requiere el servicio externo contratado — todavía no quedó configurado en este servidor. Por ahora complétalo a mano esta vez y quedará guardado — la próxima vez que escribas esta patente aquí, se reconocerá al instante.';
+    cont.innerHTML =
+      '<div class="panel">' +
+        '<p class="bahia-disponible-txt">No encontramos <strong>' + escapeHtml(patente) + '</strong>.</p>' +
+        '<div class="bahia-nota">' + explicacion + '</div>' +
+        '<div class="grid-3" style="margin-top:14px">' +
+          '<div class="campo"><label for="sim-marca">Marca</label>' +
+            '<select id="sim-marca"></select>' +
+            '<input id="sim-marca-nueva" type="text" placeholder="Nombre de la marca nueva" hidden style="margin-top:6px" />' +
+          '</div>' +
+          '<div class="campo"><label for="sim-modelo">Modelo</label><input id="sim-modelo" type="text" placeholder="Corolla" /></div>' +
+          '<div class="campo"><label for="sim-anio">Año</label><input id="sim-anio" type="text" placeholder="2020" inputmode="numeric" /></div>' +
+        '</div>' +
+        '<div class="grid-2">' +
+          '<div class="campo"><label for="sim-combustible">Combustible</label>' +
+            '<select id="sim-combustible"><option value="bencina">Bencina</option><option value="diesel">Petróleo (diésel)</option></select>' +
+          '</div>' +
+          '<div class="campo"><label for="sim-motor">Motor</label><input id="sim-motor" type="text" placeholder="Ej: 1.4T" /></div>' +
+        '</div>' +
+        '<div class="grid-2">' +
+          '<div class="campo"><label for="sim-vin">VIN / chasis (opcional)</label><input id="sim-vin" type="text" placeholder="Ej: 9BWZZZ377VT004251" style="text-transform:uppercase" /></div>' +
+        '</div>' +
+        '<div class="acciones-form"><button class="btn btn-primario" id="btn-sim-guardar" type="button">Guardar e identificar</button></div>' +
+      '</div>';
+
+    document.getElementById('sim-marca').innerHTML = opcionesSelect(marcasCache, '', '+ Agregar marca nueva...');
+    ligarSelectNuevo('sim-marca');
+    document.getElementById('btn-sim-guardar').onclick = function () { guardarSimNuevo(patente); };
+  }
+
+  function guardarSimNuevo(patente) {
+    valorFinalDeSelect('sim-marca', 'marcas').then(function (marca) {
+      var body = {
+        patente: patente,
+        marca: marca,
+        modelo: document.getElementById('sim-modelo').value.trim(),
+        anio: document.getElementById('sim-anio').value.trim(),
+        combustible: document.getElementById('sim-combustible').value,
+        motor: document.getElementById('sim-motor').value.trim(),
+        vin: document.getElementById('sim-vin').value.trim(),
+      };
+      return api('/vehiculos', { method: 'POST', body: body }).then(function () {
+        avisar('Auto guardado e identificado.');
+        renderSimEncontrado(Object.assign({ patente: patente }, body));
+        buscarSimulador(); // refresca con el registro real ya guardado (incluye id, etc.)
+      });
+    }).catch(function (e) { avisar(e.message || 'No se pudo guardar el auto.', true); });
+  }
 
   // ---------- Gestionar equipo (solo admin) ----------
   document.getElementById('btn-equipo').onclick = function () { mostrarVista('equipo'); };
