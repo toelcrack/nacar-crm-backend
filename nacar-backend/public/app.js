@@ -1020,9 +1020,19 @@
   function renderSimEncontrado(v) {
     var cont = document.getElementById('sim-resultado');
     var combustibleTxt = v.combustible === 'diesel' ? 'Petróleo (diésel)' : 'Bencina';
-    var notaOrigen = v._origen === 'api_nacional'
-      ? '🌐 Identificado automáticamente en el registro nacional de vehículos de Chile — quedó guardado en tu base, la próxima vez que busques esta patente se reconoce al instante sin volver a consultar el servicio.'
-      : '✅ Reconocido al instante: ya estaba registrado en tu base del taller.';
+    var yaRegistrado = v._origen === 'base';
+    var notaOrigen = yaRegistrado
+      ? '✅ Reconocido al instante: ya estaba registrado en tu base del taller.'
+      : '🌐 Identificado en el registro nacional de vehículos de Chile — todavía NO está registrado como vehículo del taller ni aparece en "Vehículos". Regístralo abajo recién cuando decidas darle un servicio.';
+    var accionesHtml = yaRegistrado
+      ? '<div class="acciones-form"><button class="btn btn-secundario" id="sim-ver-vehiculo" type="button">Ver su historial en Vehículos</button></div>'
+      : (
+          '<div class="grid-2" style="margin-top:14px">' +
+            '<div class="campo"><label for="sim-reg-cliente">Nombre cliente (opcional)</label><input id="sim-reg-cliente" type="text" placeholder="Juan Pérez" /></div>' +
+            '<div class="campo"><label for="sim-reg-correo">Correo (opcional)</label><input id="sim-reg-correo" type="email" placeholder="juan@correo.com" /></div>' +
+          '</div>' +
+          '<div class="acciones-form"><button class="btn btn-primario" id="btn-sim-registrar" type="button">Registrar este vehículo en el taller</button></div>'
+        );
     cont.innerHTML =
       '<div class="panel">' +
         '<div class="patente-badge">' + escapeHtml(v.patente) + '</div>' +
@@ -1035,13 +1045,42 @@
           (v.cliente_nombre ? '<div><strong>Cliente:</strong> ' + escapeHtml(v.cliente_nombre) + '</div>' : '') +
         '</div>' +
         '<p class="nota-registro">' + notaOrigen + '</p>' +
-        '<div class="acciones-form"><button class="btn btn-secundario" id="sim-ver-vehiculo" type="button">Ver su historial en Vehículos</button></div>' +
+        accionesHtml +
       '</div>';
-    document.getElementById('sim-ver-vehiculo').onclick = function () {
-      document.getElementById('buscar').value = v.patente;
-      mostrarVista('vehiculos');
-      cargarVehiculos();
+
+    if (yaRegistrado) {
+      document.getElementById('sim-ver-vehiculo').onclick = function () {
+        document.getElementById('buscar').value = v.patente;
+        mostrarVista('vehiculos');
+        cargarVehiculos();
+      };
+    } else {
+      document.getElementById('btn-sim-registrar').onclick = function () { registrarVehiculoIdentificado(v); };
+    }
+  }
+
+  // Guarda de verdad como vehículo del taller un auto que el Simulador identificó (vía la
+  // base propia ya lo tendría con _origen 'base'; esto solo aplica a 'api_nacional_sin_registrar').
+  // Es la acción explícita que el usuario pidió: que un auto NO se agregue solo porque alguien
+  // lo buscó, sino recién cuando de verdad se decide darle servicio en el taller.
+  function registrarVehiculoIdentificado(v) {
+    var elCliente = document.getElementById('sim-reg-cliente');
+    var elCorreo = document.getElementById('sim-reg-correo');
+    var body = {
+      patente: v.patente,
+      marca: v.marca || '',
+      modelo: v.modelo || '',
+      anio: v.anio || '',
+      combustible: v.combustible || 'bencina',
+      motor: v.motor || '',
+      vin: v.vin || '',
+      clienteNombre: elCliente ? elCliente.value.trim() : '',
+      clienteCorreo: elCorreo ? elCorreo.value.trim() : '',
     };
+    api('/vehiculos', { method: 'POST', body: body }).then(function () {
+      avisar('Vehículo registrado en el taller.');
+      buscarSimulador(); // refresca -> ahora viene de la base real (_origen: 'base')
+    }).catch(function (e) { avisar(e.message || 'No se pudo registrar el vehículo.', true); });
   }
 
   function renderSimNoEncontrado(patente, consultoRegistroNacional) {
