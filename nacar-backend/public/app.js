@@ -1017,6 +1017,61 @@
     if (e.key === 'Enter') { e.preventDefault(); buscarSimulador(); }
   });
 
+  // Filtros sugeridos (agregado 11-sep-2026): junto con reconocer el auto, el Simulador
+  // muestra qué filtro de aceite/aire/polen/combustible le corresponde, según DOS fuentes que
+  // se muestran una junto a la otra sin elegir una por sobre la otra (así lo pidió el usuario):
+  //   - "Nuestra experiencia": qué código le hemos puesto nosotros a autos parecidos antes
+  //     (agrupado por marca+modelo+motor si hay datos así, o marca+modelo si no).
+  //   - "Catálogo Mann Filter": lo que dice el catálogo del fabricante. Si el catálogo tiene más
+  //     de un código posible para ese modelo (motorizaciones distintas que se parecen), se
+  //     muestran TODOS con su motor/año de referencia — nunca se adivina uno solo cuando hay
+  //     ambigüedad real, así el mecánico compara y elige.
+  var FILTROS_SUGERIDOS_TIPOS = [
+    { key: 'aceite', label: 'Filtro de aceite' },
+    { key: 'aire', label: 'Filtro de aire' },
+    { key: 'polen', label: 'Filtro de polen / cabina' },
+    { key: 'combustible', label: 'Filtro de combustible' },
+  ];
+
+  function renderHistorialFuente(h) {
+    if (!h || !h.candidatos || !h.candidatos.length) {
+      return '<span class="sin-mant">sin historial todavía</span>';
+    }
+    var tierTxt = h.tier === 'marca_modelo_motor'
+      ? 'autos con esta misma marca, modelo y motor'
+      : 'autos con esta misma marca y modelo (motor distinto o sin dato)';
+    var codigos = h.candidatos.map(function (c) {
+      return '<code>' + escapeHtml(c.codigo) + '</code> (' + c.veces + (c.veces === 1 ? ' vez' : ' veces') + ')';
+    }).join(', ');
+    return codigos + '<br><span class="filtro-sugerido-tier">según ' + tierTxt + '</span>';
+  }
+
+  function renderMannFuente(m) {
+    if (!m || !m.length) return '<span class="sin-mant">sin dato en el catálogo</span>';
+    return m.map(function (c) {
+      var detalle = [];
+      if (c.motor) detalle.push('motor ' + escapeHtml(c.motor));
+      if (c.anios) detalle.push('años ' + escapeHtml(c.anios));
+      return '<code>' + escapeHtml(c.codigo) + '</code>' +
+        (detalle.length ? ' <span class="filtro-sugerido-tier">(' + detalle.join(', ') + ')</span>' : '');
+    }).join('<br>');
+  }
+
+  function renderFiltrosSugeridos(fs) {
+    if (!fs) return '';
+    var filas = FILTROS_SUGERIDOS_TIPOS.map(function (t) {
+      var d = fs[t.key] || {};
+      return (
+        '<div class="filtro-sugerido-fila">' +
+          '<div class="filtro-sugerido-nombre">' + t.label + '</div>' +
+          '<div class="filtro-sugerido-fuente"><span class="filtro-sugerido-etiqueta">Nuestra experiencia:</span> ' + renderHistorialFuente(d.historial) + '</div>' +
+          '<div class="filtro-sugerido-fuente"><span class="filtro-sugerido-etiqueta">Catálogo Mann Filter:</span> ' + renderMannFuente(d.mann) + '</div>' +
+        '</div>'
+      );
+    }).join('');
+    return '<div class="panel filtros-sugeridos"><h3>Filtros sugeridos</h3><div class="filtros-sugeridos-lista">' + filas + '</div></div>';
+  }
+
   function renderSimEncontrado(v) {
     var cont = document.getElementById('sim-resultado');
     var combustibleTxt = v.combustible === 'diesel' ? 'Petróleo (diésel)' : 'Bencina';
@@ -1046,7 +1101,8 @@
         '</div>' +
         '<p class="nota-registro">' + notaOrigen + '</p>' +
         accionesHtml +
-      '</div>';
+      '</div>' +
+      renderFiltrosSugeridos(v.filtrosSugeridos);
 
     if (yaRegistrado) {
       document.getElementById('sim-ver-vehiculo').onclick = function () {
