@@ -11,7 +11,8 @@
     "crear:admin": "node src/migrate/crear_admin.js",
     "sembrar:marcas": "node src/migrate/sembrar_marcas.js",
     "sembrar:bahias": "node src/migrate/sembrar_bahias.js",
-    "importar:catalogo-mann": "node src/migrate/importar_catalogo_mann.js"
+    "importar:catalogo-mann": "node src/migrate/importar_catalogo_mann.js",
+    "migrar:clientes": "node src/migrate/migrar_clientes.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -20,6 +21,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.14",
     "pg": "^8.11.5"
   },
   "engines": {
