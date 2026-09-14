@@ -155,6 +155,10 @@
       if (sec) sec.hidden = (v !== nombre);
       if (btn) btn.classList.toggle('activo', v === nombre);
     });
+// Se agrega el refresco de "vehiculos" acá (15-sep-2026): antes solo se cargaba una vez al
+    // iniciar sesión, así que un auto creado desde otra pantalla (ej. agendando con patente
+    // nueva directo en el calendario) no aparecía hasta buscarlo a mano o recargar la página.
+    if (nombre === 'vehiculos') cargarVehiculos();
     if (nombre === 'taller') { cargarBahias(); cargarCalendarioSemana(); }
     if (nombre === 'simulador') { document.getElementById('sim-patente').focus(); }
     if (nombre === 'equipo') cargarEquipo();
