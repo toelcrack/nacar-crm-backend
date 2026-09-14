@@ -28,9 +28,12 @@ function obtenerTransporter() {
     // (problema de red, credenciales por revisar, etc.) preferimos fallar rápido y dejar
     // agendada la cita igual, en vez de dejar al mecánico esperando el aviso de "cita agendada"
     // por minutos — misma filosofía de "nunca bloquear al mecánico" del resto del módulo.
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    // (Nota: quien LLAMA a enviarCorreoCitaAgendada tiene además su propio límite de espera
+    // independiente de esto — ver conLimiteDeEspera en src/routes/citas.js — por si una
+    // resolución DNS colgada u otro problema de red no llegara a activar estos timeouts.)
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 4000,
   });
   return transporterCache;
 }
