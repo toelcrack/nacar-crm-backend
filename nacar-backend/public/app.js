@@ -303,6 +303,11 @@
       };
       document.getElementById('btn-eliminar-vehiculo-' + id).onclick = function (e) { eliminarVehiculo(id, e.currentTarget); };
       ligarSelectNuevo('fv-marca-' + id);
+      document.getElementById('fv-toggle-dueno-' + id).onclick = function () {
+        var el = document.getElementById('fv-dueno-nuevo-' + id);
+        el.hidden = !el.hidden;
+      };
+      document.getElementById('fv-dueno-guardar-' + id).onclick = function () { guardarCambioDueno(id); };
     }
   }
 
@@ -327,11 +332,38 @@
         '<div class="campo"><label>Nombre cliente (opcional)</label><input id="fv-cliente-' + vId + '" type="text" value="' + escapeHtml(v.cliente_nombre || '') + '" /></div>' +
         '<div class="campo"><label>Correo</label><input id="fv-correo-' + vId + '" type="email" value="' + escapeHtml(v.cliente_correo || '') + '" /></div>' +
       '</div>' +
+      '<p class="campo-label-suelto" style="margin-top:-4px">Estos dos campos corrigen los datos del cliente actual (ej. arreglar un correo mal tipeado). Si el auto se vendió y ahora es de otra persona, usa "Cambiar dueño" en vez de escribir aquí.</p>' +
+      '<button class="btn-texto" id="fv-toggle-dueno-' + vId + '" type="button" style="margin-bottom:8px">Cambiar dueño (se vendió a otra persona)</button>' +
+      '<div id="fv-dueno-nuevo-' + vId + '" hidden>' +
+        '<div class="grid-2">' +
+          '<div class="campo"><label>Nombre del nuevo dueño</label><input id="fv-dueno-nombre-' + vId + '" type="text" placeholder="Juan Pérez" /></div>' +
+          '<div class="campo"><label>Correo del nuevo dueño</label><input id="fv-dueno-correo-' + vId + '" type="email" placeholder="juan@correo.com" /></div>' +
+        '</div>' +
+        '<div class="acciones-form"><button class="btn btn-secundario" id="fv-dueno-guardar-' + vId + '" type="button">Guardar nuevo dueño</button></div>' +
+      '</div>' +
       '<div class="acciones-form">' +
         '<button class="btn btn-primario" id="btn-guardar-vehiculo-editar-' + vId + '" type="button">Guardar cambios</button>' +
         '<button class="btn-texto" id="btn-cancelar-vehiculo-editar-' + vId + '" type="button">Cancelar</button>' +
       '</div>'
     );
+  }
+
+  // Reasigna el dueño de un vehículo (PUT /vehiculos/:id/cliente) sin tocar nada más del auto —
+  // pensado para el caso real "este auto se vendió, ahora es de otra persona" (agregado
+  // 14-sep-2026). A diferencia de los campos "Nombre cliente/Correo" de arriba (que corrigen al
+  // MISMO cliente si ya tenía uno), esto siempre resuelve un cliente distinto: reusa uno
+  // existente si el correo ya está registrado, o crea uno nuevo.
+  function guardarCambioDueno(vId) {
+    var nombre = document.getElementById('fv-dueno-nombre-' + vId).value.trim();
+    var correo = document.getElementById('fv-dueno-correo-' + vId).value.trim();
+    if (!nombre && !correo) { avisar('Escribe el nombre o correo del nuevo dueño.', true); return; }
+    api('/vehiculos/' + vId + '/cliente', { method: 'PUT', body: { clienteNombre: nombre, clienteCorreo: correo } })
+      .then(function () {
+        delete detalleCache[vId];
+        avisar('Dueño del vehículo actualizado.');
+        return api('/vehiculos/' + vId).then(function (data) { detalleCache[vId] = data; pintarDetalle(vId); return cargarVehiculos(); });
+      })
+      .catch(function (e) { avisar(e.message || 'No se pudo cambiar el dueño.', true); });
   }
 
   function guardarVehiculoEditado(vId) {
@@ -828,6 +860,9 @@
   function abrirModalCita(modo, datos) {
     citaModoActual = modo;
     var modal = document.getElementById('modal-cita');
+    var btnGuardarCita = document.getElementById('cita-guardar');
+    btnGuardarCita.disabled = false;
+    btnGuardarCita.textContent = 'Guardar';
     document.getElementById('cita-id').value = modo === 'editar' ? datos.id : '';
     document.getElementById('cita-bahia-id').value = datos.bahia_id;
     document.getElementById('cita-bahia-nombre').value = datos.bahia_nombre || '';
@@ -838,6 +873,8 @@
     var btnEliminar = document.getElementById('cita-eliminar');
     var chatWrap = document.getElementById('cita-chat-wrap');
     var chatHint = document.getElementById('cita-chat-hint');
+    var toggleNuevo = document.getElementById('cita-toggle-nuevo');
+    var bloqueNuevo = document.getElementById('cita-vehiculo-nuevo');
 
     if (modo === 'nueva') {
       campoPatente.hidden = false;
@@ -851,7 +888,19 @@
       document.getElementById('cita-hora-inicio').value = '';
       document.getElementById('cita-hora-fin').value = '';
       document.getElementById('cita-nota').value = '';
+      toggleNuevo.hidden = false;
+      bloqueNuevo.hidden = true;
+      document.getElementById('cita-nv-marca').innerHTML = opcionesSelect(marcasCache, '', '+ Agregar marca nueva...');
+      ligarSelectNuevo('cita-nv-marca');
+      document.getElementById('cita-nv-modelo').value = '';
+      document.getElementById('cita-nv-anio').value = '';
+      document.getElementById('cita-nv-combustible').value = 'bencina';
+      document.getElementById('cita-nv-motor').value = '';
+      document.getElementById('cita-nv-cliente').value = '';
+      document.getElementById('cita-nv-correo').value = '';
     } else {
+      toggleNuevo.hidden = true;
+      bloqueNuevo.hidden = true;
       campoPatente.hidden = true;
       vehiculoTxt.hidden = false;
       var autoLinea = escapeHtml(datos.patente) + ' — ' + escapeHtml(datos.marca || '') + ' ' +
@@ -927,6 +976,11 @@
     if (e.target === this) cerrarModalCita();
   });
 
+  document.getElementById('cita-toggle-nuevo').onclick = function () {
+    var bloque = document.getElementById('cita-vehiculo-nuevo');
+    bloque.hidden = !bloque.hidden;
+  };
+
   document.getElementById('cita-patente').addEventListener('input', function () {
     var inp = this;
     clearTimeout(timerCitaPatente);
@@ -954,15 +1008,58 @@
     if (!fecha) { avisar('Escoge la fecha.', true); return; }
     if (!horaInicio) { avisar('Escoge la hora de inicio.', true); return; }
 
+    // Mientras se guarda (puede tardar unos segundos si hay que mandar el correo de aviso), el
+    // botón se deshabilita y avisa "Guardando..." — así nunca se ve "pegado" sin ninguna señal,
+    // aunque la respuesta se demore lo que dura el intento de envío del correo.
+    var btnGuardar = document.getElementById('cita-guardar');
+    var textoOriginalBtn = btnGuardar.textContent;
+    function terminarGuardado() {
+      btnGuardar.disabled = false;
+      btnGuardar.textContent = textoOriginalBtn;
+    }
+    btnGuardar.disabled = true;
+    btnGuardar.textContent = 'Guardando...';
+
     if (citaModoActual === 'nueva') {
       var patente = document.getElementById('cita-patente').value.trim().toUpperCase();
-      if (!patente) { avisar('Escribe la patente del vehículo.', true); return; }
-      api('/citas', {
-        method: 'POST',
-        body: { bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota },
-      })
-        .then(function () { avisar('Cita agendada.'); cerrarModalCita(); cargarCalendarioSemana(); })
-        .catch(function (e) { avisar(e.message || 'No se pudo agendar la cita.', true); });
+      if (!patente) { avisar('Escribe la patente del vehículo.', true); terminarGuardado(); return; }
+      var bloqueNuevo = document.getElementById('cita-vehiculo-nuevo');
+      var incluyeDatosNuevos = !bloqueNuevo.hidden;
+
+      var promesaBody = incluyeDatosNuevos
+        ? valorFinalDeSelect('cita-nv-marca', 'marcas').then(function (marca) {
+            return {
+              bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota,
+              marca: marca,
+              modelo: document.getElementById('cita-nv-modelo').value.trim(),
+              anio: document.getElementById('cita-nv-anio').value.trim(),
+              combustible: document.getElementById('cita-nv-combustible').value,
+              motor: document.getElementById('cita-nv-motor').value.trim(),
+              clienteNombre: document.getElementById('cita-nv-cliente').value.trim(),
+              clienteCorreo: document.getElementById('cita-nv-correo').value.trim(),
+            };
+          })
+        : Promise.resolve({ bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota });
+
+      promesaBody.then(function (body) {
+        return api('/citas', { method: 'POST', body: body });
+      }).then(function (r) {
+        var msg = 'Cita agendada.';
+        if (r && r.correo) {
+          msg += r.correo.enviado ? ' Se le envió un correo al cliente avisándole.' : '';
+        }
+        avisar(msg);
+        cerrarModalCita();
+        cargarCalendarioSemana();
+      }).catch(function (e) {
+        var mensajeError = e.message || 'No se pudo agendar la cita.';
+        avisar(mensajeError, true);
+        // Si el vehículo no estaba registrado y todavía no se mostraba el bloque para
+        // completarlo, lo revelamos automáticamente para que el usuario no se quede perdido.
+        if (!incluyeDatosNuevos && /no está registrada todavía/.test(mensajeError)) {
+          bloqueNuevo.hidden = false;
+        }
+      }).then(terminarGuardado, terminarGuardado);
     } else {
       var id = document.getElementById('cita-id').value;
       api('/citas/' + id, {
@@ -970,7 +1067,8 @@
         body: { bahia_id: bahiaId, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota },
       })
         .then(function () { avisar('Cita actualizada.'); cerrarModalCita(); cargarBahias(); cargarCalendarioSemana(); })
-        .catch(function (e) { avisar(e.message || 'No se pudo actualizar la cita.', true); });
+        .catch(function (e) { avisar(e.message || 'No se pudo actualizar la cita.', true); })
+        .then(terminarGuardado, terminarGuardado);
     }
   };
 
