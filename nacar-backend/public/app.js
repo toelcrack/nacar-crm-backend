@@ -1084,8 +1084,14 @@
         return api('/citas', { method: 'POST', body: body });
       }).then(function (r) {
         var msg = 'Cita agendada.';
+        // Antes, si el correo no se enviaba, simplemente no se decía nada — el backend ya
+        // manda un "motivo" (ej. "No se pudo determinar el correo del cliente.") pero se
+        // descartaba en silencio. Ahora se muestra siempre, para que quede claro por qué no
+        // llegó el aviso al cliente (agregado 15-sep-2026, a pedido del usuario).
         if (r && r.correo) {
-          msg += r.correo.enviado ? ' Se le envió un correo al cliente avisándole.' : '';
+          msg += r.correo.enviado
+            ? ' Se le envió un correo al cliente avisándole.'
+            : ' ' + (r.correo.motivo || 'No se pudo enviar el correo al cliente.');
         }
         avisar(msg);
         cerrarModalCita();
