@@ -3,6 +3,20 @@ const { pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const { consultarPatenteNacional } = require('../getapi');
 const { sugerirFiltros } = require('../filtros');
+const { resolverClienteId } = require('../clientes');
+
+// Cliente vinculado (agregado 14-sep-2026): "cliente_nombre"/"cliente_correo" siguen viniendo
+// en la respuesta con esos mismos nombres (el frontend no cambia), pero ahora su valor sale del
+// cliente vinculado por cliente_id — con las columnas viejas de texto suelto como red de
+// seguridad (COALESCE) por si algún vehículo quedara sin cliente_id (ej. no se corrió todavía
+// la migración en este servidor). Como en SQL una columna repetida en el SELECT se queda con el
+// último valor asignado, poner este COALESCE después de "v.*" pisa el valor viejo sin romper
+// nada de lo que ya lee `v.cliente_nombre`/`v.cliente_correo` en el resto del código.
+const CAMPOS_VEHICULO_CON_CLIENTE = `
+  v.*,
+  COALESCE(c.nombre, v.cliente_nombre) AS cliente_nombre,
+  COALESCE(c.correo, v.cliente_correo) AS cliente_correo
+`;
 
 const router = express.Router();
 router.use(requireAuth);
@@ -18,21 +32,20 @@ router.get('/', async (req, res) => {
   let r;
   if (q) {
     r = await pool.query(
-      `SELECT v.*, COUNT(m.id)::int AS mantenciones_count
+      `SELECT ${CAMPOS_VEHICULO_CON_CLIENTE}, (SELECT COUNT(*) FROM mantenciones m WHERE m.vehiculo_id = v.id)::int AS mantenciones_count
        FROM vehiculos v
-       LEFT JOIN mantenciones m ON m.vehiculo_id = v.id
-       WHERE v.patente ILIKE $1 OR v.marca ILIKE $1 OR v.modelo ILIKE $1 OR v.cliente_nombre ILIKE $1
-       GROUP BY v.id
+       LEFT JOIN clientes c ON c.id = v.cliente_id
+       WHERE v.patente ILIKE $1 OR v.marca ILIKE $1 OR v.modelo ILIKE $1
+         OR v.cliente_nombre ILIKE $1 OR c.nombre ILIKE $1
        ORDER BY v.creado_en DESC
        LIMIT 200`,
       [`%${q}%`]
     );
   } else {
     r = await pool.query(
-      `SELECT v.*, COUNT(m.id)::int AS mantenciones_count
+      `SELECT ${CAMPOS_VEHICULO_CON_CLIENTE}, (SELECT COUNT(*) FROM mantenciones m WHERE m.vehiculo_id = v.id)::int AS mantenciones_count
        FROM vehiculos v
-       LEFT JOIN mantenciones m ON m.vehiculo_id = v.id
-       GROUP BY v.id
+       LEFT JOIN clientes c ON c.id = v.cliente_id
        ORDER BY v.creado_en DESC
        LIMIT 200`
     );
@@ -40,17 +53,21 @@ router.get('/', async (req, res) => {
   res.json(r.rows);
 });
 
-// POST /api/vehiculos  -> crear vehiculo nuevo
+// POST /api/vehiculos  -> crear vehiculo nuevo. Acepta clienteId (un cliente ya existente,
+// elegido en un buscador) O clienteNombre/clienteCorreo (crea uno nuevo, o reusa uno existente
+// si el correo ya está registrado — ver resolverClienteId en src/clientes.js) — así un cliente
+// con dos autos queda con UN solo registro de cliente, no uno por auto.
 router.post('/', async (req, res) => {
-  const { patente, marca, modelo, anio, combustible, motor, vin, clienteNombre, clienteCorreo } = req.body || {};
+  const { patente, marca, modelo, anio, combustible, motor, vin, clienteId, clienteNombre, clienteCorreo } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
   try {
+    const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo });
     const r = await pool.query(
-      `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, vin, cliente_nombre, cliente_correo, creado_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (motor || '').trim(), (vin || '').trim().toUpperCase(), (clienteNombre || '').trim(), clienteCorreo || '', req.usuario.id]
+      `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, vin, cliente_id, creado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (motor || '').trim(), (vin || '').trim().toUpperCase(), clienteIdResuelto, req.usuario.id]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
@@ -96,7 +113,10 @@ router.get('/buscar/:patente', async (req, res) => {
   const patenteLimpia = String(req.params.patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'Falta la patente.' });
 
-  const r = await pool.query('SELECT * FROM vehiculos WHERE patente = $1', [patenteLimpia]);
+  const r = await pool.query(
+    `SELECT ${CAMPOS_VEHICULO_CON_CLIENTE} FROM vehiculos v LEFT JOIN clientes c ON c.id = v.cliente_id WHERE v.patente = $1`,
+    [patenteLimpia]
+  );
   if (r.rows[0]) {
     const conFiltros = await conFiltrosSugeridos(r.rows[0]);
     return res.json(Object.assign({ _origen: 'base' }, conFiltros));
@@ -126,7 +146,10 @@ router.get('/buscar/:patente', async (req, res) => {
 // GET /api/vehiculos/:id  -> detalle + historial de mantenciones
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const v = await pool.query('SELECT * FROM vehiculos WHERE id = $1', [id]);
+  const v = await pool.query(
+    `SELECT ${CAMPOS_VEHICULO_CON_CLIENTE} FROM vehiculos v LEFT JOIN clientes c ON c.id = v.cliente_id WHERE v.id = $1`,
+    [id]
+  );
   if (!v.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
   const m = await pool.query(
     `SELECT mant.*, uc.nombre AS creado_por_nombre, ue.nombre AS editado_por_nombre
@@ -140,20 +163,26 @@ router.get('/:id', async (req, res) => {
   res.json({ vehiculo: v.rows[0], mantenciones: m.rows });
 });
 
-// PUT /api/vehiculos/:id  -> editar datos del vehículo (solo administrador)
+// PUT /api/vehiculos/:id  -> editar datos del vehículo (solo administrador). clienteId/
+// clienteNombre/clienteCorreo funcionan igual que en el POST de creación.
 router.put('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const { patente, marca, modelo, anio, combustible, motor, vin, clienteNombre, clienteCorreo } = req.body || {};
+  const { patente, marca, modelo, anio, combustible, motor, vin, clienteId, clienteNombre, clienteCorreo } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
   try {
+    const actual = await pool.query('SELECT cliente_id FROM vehiculos WHERE id = $1', [id]);
+    if (!actual.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
+    const clienteIdResuelto = await resolverClienteId({
+      clienteId, clienteNombre, clienteCorreo, clienteIdActual: actual.rows[0].cliente_id,
+    });
     const r = await pool.query(
       `UPDATE vehiculos SET
-         patente=$1, marca=$2, modelo=$3, anio=$4, combustible=$5, motor=$6, vin=$7, cliente_nombre=$8, cliente_correo=$9
-       WHERE id=$10
+         patente=$1, marca=$2, modelo=$3, anio=$4, combustible=$5, motor=$6, vin=$7, cliente_id=$8
+       WHERE id=$9
        RETURNING *`,
-      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (motor || '').trim(), (vin || '').trim().toUpperCase(), (clienteNombre || '').trim(), clienteCorreo || '', id]
+      [patenteLimpia, marca || '', modelo || '', String(anio || ''), comb, (motor || '').trim(), (vin || '').trim().toUpperCase(), clienteIdResuelto, id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
     res.json(r.rows[0]);
@@ -164,6 +193,31 @@ router.put('/:id', requireAdmin, async (req, res) => {
     // eslint-disable-next-line no-console
     console.error(e);
     res.status(500).json({ error: 'No se pudo actualizar el vehículo.' });
+  }
+});
+
+// PUT /api/vehiculos/:id/cliente  -> reasignar el dueño de un vehículo (solo administrador) —
+// para el caso real "este auto se vendió, ahora es de otra persona": el auto conserva toda su
+// patente/marca/modelo/motor e historial de mantenciones intacto, solo cambia a quién pertenece.
+// Acepta clienteId (cliente ya existente) o clienteNombre/clienteCorreo (crea uno nuevo, o reusa
+// uno existente con ese correo).
+router.put('/:id/cliente', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { clienteId, clienteNombre, clienteCorreo } = req.body || {};
+  try {
+    const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo });
+    if (!clienteIdResuelto) return res.status(400).json({ error: 'Indica el cliente (elige uno existente o escribe uno nuevo).' });
+    const r = await pool.query(
+      `UPDATE vehiculos SET cliente_id = $1 WHERE id = $2 RETURNING id, patente, cliente_id`,
+      [clienteIdResuelto, id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
+    const c = await pool.query('SELECT id, nombre, correo FROM clientes WHERE id = $1', [clienteIdResuelto]);
+    res.json(Object.assign({}, r.rows[0], { cliente: c.rows[0] }));
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo cambiar el dueño del vehículo.' });
   }
 });
 

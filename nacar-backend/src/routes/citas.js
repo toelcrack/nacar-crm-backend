@@ -1,6 +1,8 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth } = require('../auth');
+const { resolverClienteId } = require('../clientes');
+const { enviarCorreoCitaAgendada } = require('../correo');
 
 const router = express.Router();
 // Igual que Bahías: cualquier usuario logueado (admin o mecánico) puede ver y agendar el
@@ -31,10 +33,12 @@ router.get('/', async (req, res) => {
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
               b.nombre AS bahia_nombre,
-              v.id AS vehiculo_id, v.patente, v.marca, v.modelo, v.cliente_nombre
+              v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
+              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
        FROM citas c
        JOIN bahias b ON b.id = c.bahia_id
        JOIN vehiculos v ON v.id = c.vehiculo_id
+       LEFT JOIN clientes cl ON cl.id = v.cliente_id
        WHERE c.fecha BETWEEN $1 AND $2
        ORDER BY c.fecha ASC, c.hora_inicio ASC, c.id ASC`,
       [desde, hasta]
@@ -47,8 +51,17 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/citas -> agenda un vehículo (por patente, ya registrado en Vehículos) en una
-// bahía, en una fecha y hora futura (o de hoy).
+// POST /api/citas -> agenda un vehículo en una bahía, en una fecha y hora futura (o de hoy).
+//
+// La patente puede ser de un vehículo YA registrado (como antes), o una patente nueva — en ese
+// caso, si vienen datos de marca/modelo/cliente en el mismo body, el vehículo (y su cliente,
+// nuevo o reusando uno existente por correo — ver resolverClienteId) se crea en el momento, sin
+// tener que ir primero a la pestaña Vehículos (agregado 14-sep-2026, a pedido del usuario). Si
+// la patente no existe y tampoco vienen esos datos, se sigue pidiendo registrarla primero.
+//
+// Si el vehículo queda con un cliente con correo, se le manda un correo de confirmación desde
+// taller@nacarautomotriz.cl (ver src/correo.js) — nunca bloquea ni hace fallar el agendamiento
+// si el correo no está configurado o falla el envío.
 router.post('/', async (req, res) => {
   const body = req.body || {};
   const bahiaId = Number(body.bahia_id);
@@ -67,21 +80,68 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const v = await pool.query('SELECT id FROM vehiculos WHERE patente = $1', [patente]);
-    if (!v.rows[0]) {
-      return res.status(404).json({
-        error: 'Esa patente no está registrada todavía. Regístrala primero en la pestaña Vehículos y luego agéndala aquí.',
-      });
-    }
     const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
     if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+
+    let vehiculoId;
+    const v = await pool.query('SELECT id FROM vehiculos WHERE patente = $1', [patente]);
+    if (v.rows[0]) {
+      vehiculoId = v.rows[0].id;
+    } else {
+      const { marca, modelo, anio, combustible, motor, clienteId, clienteNombre, clienteCorreo } = body;
+      const trajoDatosVehiculo = marca || modelo || clienteId || clienteNombre || clienteCorreo;
+      if (!trajoDatosVehiculo) {
+        return res.status(404).json({
+          error: 'Esa patente no está registrada todavía. Complétala aquí mismo (marca, modelo y cliente) o regístrala primero en la pestaña Vehículos.',
+        });
+      }
+      const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo });
+      const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
+      const nuevoVehiculo = await pool.query(
+        `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, cliente_id, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [patente, (marca || '').trim(), (modelo || '').trim(), String(anio || ''), comb, (motor || '').trim(), clienteIdResuelto, req.usuario ? req.usuario.id : null]
+      );
+      vehiculoId = nuevoVehiculo.rows[0].id;
+    }
 
     const r = await pool.query(
       `INSERT INTO citas (bahia_id, vehiculo_id, fecha, hora_inicio, hora_fin, nota, creado_por)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [bahiaId, v.rows[0].id, fecha, horaInicio, horaFin || null, nota || null, req.usuario ? req.usuario.id : null]
+      [bahiaId, vehiculoId, fecha, horaInicio, horaFin || null, nota || null, req.usuario ? req.usuario.id : null]
     );
-    res.json({ ok: true, id: r.rows[0].id });
+
+    let correo = { enviado: false, motivo: 'No se pudo determinar el correo del cliente.' };
+    try {
+      const detalle = await pool.query(
+        `SELECT v.patente, v.marca, v.modelo, b.nombre AS bahia_nombre,
+                COALESCE(cl.correo, v.cliente_correo) AS correo, COALESCE(cl.nombre, v.cliente_nombre) AS nombre
+         FROM vehiculos v
+         JOIN bahias b ON b.id = $1
+         LEFT JOIN clientes cl ON cl.id = v.cliente_id
+         WHERE v.id = $2`,
+        [bahiaId, vehiculoId]
+      );
+      if (detalle.rows[0]) {
+        correo = await enviarCorreoCitaAgendada({
+          correoCliente: detalle.rows[0].correo,
+          nombreCliente: detalle.rows[0].nombre,
+          patente: detalle.rows[0].patente,
+          marca: detalle.rows[0].marca,
+          modelo: detalle.rows[0].modelo,
+          fecha,
+          horaInicio,
+          bahiaNombre: detalle.rows[0].bahia_nombre,
+          nota,
+        });
+      }
+    } catch (eCorreo) {
+      // eslint-disable-next-line no-console
+      console.error('Error preparando el correo de la cita:', eCorreo.message);
+      correo = { enviado: false, motivo: 'Error interno preparando el correo.' };
+    }
+
+    res.json({ ok: true, id: r.rows[0].id, correo });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error(e);
