@@ -116,8 +116,15 @@
   .mant-acciones{display:flex;gap:14px;margin-top:6px;}
   .sin-mant{font-size:13px;color:var(--gray-3);font-style:italic;margin:4px 0 0;}
   .vacio{text-align:center;color:var(--gray-2);padding:48px 20px;border:1px dashed rgba(255,255,255,0.12);border-radius:16px;}
-  .aviso{font-size:13px;padding:10px 14px;border-radius:10px;margin-bottom:16px;background:var(--danger-bg);
-    border:1px solid var(--danger-border);color:var(--danger-text);display:none;}
+  /* Se vuelve un aviso "flotante" (position:fixed, por encima incluso de los modales) porque
+     antes vivía dentro del flujo normal de <main> — cuando un modal estaba abierto (o la página
+     estaba desplazada hacia abajo), el mensaje se seguía activando pero quedaba tapado o fuera de
+     pantalla y el usuario nunca se enteraba de qué había fallado (agregado 15-sep-2026, a pedido
+     del usuario: "no funciona porque falta info... quiero que avises"). */
+  .aviso{font-size:13px;padding:10px 14px;border-radius:10px;background:var(--danger-bg);
+    border:1px solid var(--danger-border);color:var(--danger-text);display:none;
+    position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:200;
+    max-width:calc(100% - 32px);box-shadow:0 8px 28px rgba(0,0,0,0.4);}
   .aviso.activo{display:block;}
   .aviso.ok{background:rgba(217,100,46,0.14);border-color:var(--glass-border);color:var(--orange-light);}
   .nota-registro{font-size:12px;color:var(--gray-3);margin-top:16px;text-align:center;}
