@@ -980,9 +980,44 @@
     if (e.target === this) cerrarModalCita();
   });
 
+// Al revelar el bloque de "patente nueva" (a mano, o automático tras el primer intento
+  // fallido), intentamos reconocer el auto igual que lo hace el Simulador: primero en la base
+  // del taller (si ya existiera, esto ni se llegaría a mostrar) y si no, en el registro
+  // nacional de vehículos (GetAPI, si está contratado) — así no hay que escribir a mano
+  // marca/modelo/año/combustible cuando la patente SÍ se puede identificar sola. Si no se puede
+  // (patente muy nueva, GetAPI no configurado, o falla la consulta), no pasa nada: se completa
+  // a mano como ya funcionaba, sin bloquear ni avisar de un error (agregado 15-sep-2026, a
+  // pedido del usuario: "cuando pongo una patente nueva no se carga qué auto es").
+  function intentarAutocompletarVehiculoNuevo(patente) {
+    if (!patente) return;
+    api('/vehiculos/buscar/' + encodeURIComponent(patente)).then(function (v) {
+      if (v._origen !== 'api_nacional') return; // ya estaba en la base -> no debería pasar por aquí
+      if (v.marca) {
+        document.getElementById('cita-nv-marca').innerHTML = opcionesSelect(marcasCache, v.marca, '+ Agregar marca nueva...');
+        ligarSelectNuevo('cita-nv-marca');
+        document.getElementById('cita-nv-marca-nueva').hidden = true;
+      }
+      var modeloEl = document.getElementById('cita-nv-modelo');
+      if (v.modelo && !modeloEl.value) modeloEl.value = v.modelo;
+      var anioEl = document.getElementById('cita-nv-anio');
+      if (v.anio && !anioEl.value) anioEl.value = v.anio;
+      if (v.combustible) document.getElementById('cita-nv-combustible').value = v.combustible;
+      var motorEl = document.getElementById('cita-nv-motor');
+      if (v.motor && !motorEl.value) motorEl.value = v.motor;
+      avisar('Auto identificado en el registro nacional — se completó marca/modelo solo. Revisa y corrige si algo no calza, y completa el cliente.');
+    }).catch(function () {
+      // No se pudo identificar sola (ni en la base ni en el registro nacional, o GetAPI no
+      // está configurado) — se sigue completando a mano, tal como ya funcionaba antes.
+    });
+  }
+
   document.getElementById('cita-toggle-nuevo').onclick = function () {
     var bloque = document.getElementById('cita-vehiculo-nuevo');
+    var seEstaMostrando = bloque.hidden; // antes de togglear
     bloque.hidden = !bloque.hidden;
+    if (seEstaMostrando) {
+      intentarAutocompletarVehiculoNuevo(document.getElementById('cita-patente').value.trim().toUpperCase());
+    }
   };
 
   document.getElementById('cita-patente').addEventListener('input', function () {
@@ -1062,6 +1097,7 @@
         // completarlo, lo revelamos automáticamente para que el usuario no se quede perdido.
         if (!incluyeDatosNuevos && /no está registrada todavía/.test(mensajeError)) {
           bloqueNuevo.hidden = false;
+          intentarAutocompletarVehiculoNuevo(patente);
         }
       }).then(terminarGuardado, terminarGuardado);
     } else {
