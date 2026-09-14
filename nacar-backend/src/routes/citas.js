@@ -5,6 +5,37 @@ const { resolverClienteId } = require('../clientes');
 const { enviarCorreoCitaAgendada } = require('../correo');
 
 const router = express.Router();
+
+// Al agendar, esperamos el envío del correo un rato corto para poder avisar de inmediato si
+// salió o no — pero NUNCA más que esto. Es un límite propio de la aplicación, con un
+// setTimeout normal de Node, que no depende de red/DNS/Gmail para nada: así, aunque algo en el
+// camino del correo se cuelgue de una forma que los timeouts internos de nodemailer (src/correo.js)
+// no lleguen a cubrir (ej. una resolución DNS que nunca vuelve), agendar una cita JAMÁS puede
+// quedarse "pegado" esperando el correo — a los 5 segundos se responde igual, y si el correo
+// termina llegando más tarde, simplemente no se avisa en el momento (queda solo en los logs).
+function conLimiteDeEspera(promesa, ms, siExpira) {
+  return new Promise((resolve) => {
+    let resuelto = false;
+    const temporizador = setTimeout(() => {
+      if (resuelto) return;
+      resuelto = true;
+      resolve(siExpira);
+    }, ms);
+    promesa.then((valor) => {
+      if (resuelto) return;
+      resuelto = true;
+      clearTimeout(temporizador);
+      resolve(valor);
+    }).catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error('Error enviando correo de cita (después de agendar):', e.message);
+      if (resuelto) return;
+      resuelto = true;
+      clearTimeout(temporizador);
+      resolve(siExpira);
+    });
+  });
+}
 // Igual que Bahías: cualquier usuario logueado (admin o mecánico) puede ver y agendar el
 // calendario del taller — es organización del día a día, no un dato sensible como Estadísticas.
 router.use(requireAuth);
@@ -123,17 +154,21 @@ router.post('/', async (req, res) => {
         [bahiaId, vehiculoId]
       );
       if (detalle.rows[0]) {
-        correo = await enviarCorreoCitaAgendada({
-          correoCliente: detalle.rows[0].correo,
-          nombreCliente: detalle.rows[0].nombre,
-          patente: detalle.rows[0].patente,
-          marca: detalle.rows[0].marca,
-          modelo: detalle.rows[0].modelo,
-          fecha,
-          horaInicio,
-          bahiaNombre: detalle.rows[0].bahia_nombre,
-          nota,
-        });
+        correo = await conLimiteDeEspera(
+          enviarCorreoCitaAgendada({
+            correoCliente: detalle.rows[0].correo,
+            nombreCliente: detalle.rows[0].nombre,
+            patente: detalle.rows[0].patente,
+            marca: detalle.rows[0].marca,
+            modelo: detalle.rows[0].modelo,
+            fecha,
+            horaInicio,
+            bahiaNombre: detalle.rows[0].bahia_nombre,
+            nota,
+          }),
+          5000,
+          { enviado: false, motivo: 'El correo se está demorando más de lo normal — la cita quedó agendada igual; revisa más tarde si le llegó al cliente.' }
+        );
       }
     } catch (eCorreo) {
       // eslint-disable-next-line no-console
