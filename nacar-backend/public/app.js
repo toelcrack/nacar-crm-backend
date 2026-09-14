@@ -980,7 +980,7 @@
     if (e.target === this) cerrarModalCita();
   });
 
-// Al revelar el bloque de "patente nueva" (a mano, o automático tras el primer intento
+  // Al revelar el bloque de "patente nueva" (a mano, o automático tras el primer intento
   // fallido), intentamos reconocer el auto igual que lo hace el Simulador: primero en la base
   // del taller (si ya existiera, esto ni se llegaría a mostrar) y si no, en el registro
   // nacional de vehículos (GetAPI, si está contratado) — así no hay que escribir a mano
