@@ -438,6 +438,29 @@
       <datalist id="cita-dl-patente"></datalist>
     </div>
     <div id="cita-vehiculo-txt" class="bahia-cliente" style="margin-bottom:10px" hidden></div>
+    <button class="btn-texto" id="cita-toggle-nuevo" type="button" style="margin:-4px 0 10px" hidden>+ Patente nueva — completar datos del auto</button>
+    <div id="cita-vehiculo-nuevo" hidden>
+      <p class="campo-label-suelto">Esta patente no está registrada todavía — complétala aquí y se registra junto con la cita:</p>
+      <div class="grid-3">
+        <div class="campo"><label for="cita-nv-marca">Marca</label>
+          <select id="cita-nv-marca"></select>
+          <input id="cita-nv-marca-nueva" type="text" placeholder="Nombre de la marca nueva" hidden style="margin-top:6px" />
+        </div>
+        <div class="campo"><label for="cita-nv-modelo">Modelo</label><input id="cita-nv-modelo" type="text" placeholder="Corolla" /></div>
+        <div class="campo"><label for="cita-nv-anio">Año</label><input id="cita-nv-anio" type="text" placeholder="2020" inputmode="numeric" /></div>
+      </div>
+      <div class="grid-2">
+        <div class="campo"><label for="cita-nv-combustible">Combustible</label>
+          <select id="cita-nv-combustible"><option value="bencina">Bencina</option><option value="diesel">Petróleo (diésel)</option></select>
+        </div>
+        <div class="campo"><label for="cita-nv-motor">Motor (opcional)</label><input id="cita-nv-motor" type="text" placeholder="Ej: 1.6" /></div>
+      </div>
+      <div class="grid-2">
+        <div class="campo"><label for="cita-nv-cliente">Nombre cliente</label><input id="cita-nv-cliente" type="text" placeholder="Juan Pérez" /></div>
+        <div class="campo"><label for="cita-nv-correo">Correo del cliente</label><input id="cita-nv-correo" type="email" placeholder="juan@correo.com" /></div>
+      </div>
+      <p class="campo-label-suelto" style="margin-top:-6px">Si escribes el correo, le llega un aviso automático de esta cita.</p>
+    </div>
     <div class="grid-2">
       <div class="campo"><label for="cita-fecha">Fecha</label><input id="cita-fecha" type="date" /></div>
       <div class="campo"><label for="cita-hora-inicio">Hora inicio</label><input id="cita-hora-inicio" type="time" /></div>
