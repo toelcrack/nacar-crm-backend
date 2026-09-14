@@ -32,6 +32,25 @@ CREATE TABLE IF NOT EXISTS vehiculos (
 ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS motor TEXT;
 ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS vin TEXT;
 
+-- Cliente como entidad propia (agregado 14-sep-2026): antes el "cliente" era solo texto suelto
+-- (cliente_nombre/cliente_correo) pegado a cada vehículo — eso no permite saber que dos autos
+-- son del mismo dueño, ni reasignar un auto a otro dueño cuando se vende sin perder su historial
+-- de mantenciones. cliente_nombre/cliente_correo NO se borran (quedan de respaldo para lo ya
+-- migrado y por si algún vehículo todavía no tiene cliente_id) — el dato "vivo" pasa a vivir en
+-- clientes + vehiculos.cliente_id. Ver src/migrate/migrar_clientes.js para la migración de datos.
+CREATE TABLE IF NOT EXISTS clientes (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL,
+  correo TEXT,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_clientes_correo ON clientes (LOWER(correo));
+CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes (LOWER(nombre));
+
+ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id);
+CREATE INDEX IF NOT EXISTS idx_vehiculos_cliente ON vehiculos (cliente_id);
+
 CREATE TABLE IF NOT EXISTS mantenciones (
   id SERIAL PRIMARY KEY,
   vehiculo_id INTEGER NOT NULL REFERENCES vehiculos(id) ON DELETE CASCADE,
