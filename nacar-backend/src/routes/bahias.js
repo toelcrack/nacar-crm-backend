@@ -16,6 +16,10 @@ router.use(requireAuth);
 const SQL_OCUPACION_ACTUAL = `
   SELECT b.id, b.nombre, b.tipo, b.orden,
          c.id AS cita_id, c.nota, c.atrasado, c.hora_inicio, c.hora_fin,
+         c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
+         c.pastillas_tra_tipo, c.pastillas_tra_bloqueada,
+         c.discos_del_rectificar, c.discos_tra_rectificar,
+         c.estado_general, c.tareas,
          v.id AS vehiculo_id, v.patente, v.marca, v.modelo, v.anio, v.cliente_nombre
   FROM bahias b
   LEFT JOIN LATERAL (

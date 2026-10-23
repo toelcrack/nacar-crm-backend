@@ -861,6 +861,417 @@
     cargarCalendarioSemana();
   };
 
+  // ---------- Estado del auto en el taller (frenos/discos + checklist de tareas) ----------
+  var tallerEstado = null; // estado de la cita actualmente abierta en el modal, o null
+  var tallerVehiculo = null; // datos del vehículo/cliente de esa cita, para el informe impreso
+
+  var TAREAS_CATALOGO = [
+    'Mantención de aceite', 'Filtro de aceite', 'Filtro de aire', 'Filtro de polen', 'Filtro de combustible',
+    'Frenos',
+    'Alineación', 'Balanceo',
+    'Cambio neumáticos', 'Rotación de neumáticos',
+    'Recarga A/C', 'Bujías',
+    'Aceite caja', 'Aceite diferencial',
+    'Scanner', 'Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero',
+    'Otro',
+  ];
+  var TAREAS_DIAGNOSTICO = ['Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero'];
+  function requiereDiagnostico(nombre) { return TAREAS_DIAGNOSTICO.indexOf(nombre) !== -1; }
+
+  function labelPastillaPct(pct) {
+    if (pct === '' || pct === null || pct === undefined) return 'Sin registrar';
+    pct = Number(pct);
+    if (pct >= 60) return 'Muy buen estado';
+    if (pct >= 30) return 'Revisar pronto';
+    return 'Cambiar ahora';
+  }
+  function claseChipPct(pct) {
+    if (pct === '' || pct === null || pct === undefined) return '';
+    pct = Number(pct);
+    if (pct >= 60) return '';
+    if (pct >= 30) return 'chip-revisar';
+    return 'chip-problema';
+  }
+  function rcmDePct(pct) {
+    if (pct === '' || pct === null || pct === undefined) return '';
+    pct = Number(pct);
+    if (pct >= 60) return 'M';
+    if (pct >= 30) return 'R';
+    return 'C';
+  }
+
+  function renderBloqueFreno(inputId, pctId, labelId, titulo, valor, bloqueado, labelOverride, campo) {
+    var val = (valor === '' || valor === null || valor === undefined) ? 100 : Number(valor);
+    var labelTxt = bloqueado ? 'Bloqueado por defecto' : (labelOverride || labelPastillaPct(valor));
+    return '<div class="freno-bloque">' +
+      '<div class="freno-header"><span>' + escapeHtml(titulo) + '</span><span class="freno-pct" id="' + pctId + '">' + (bloqueado ? '—' : (val + '%')) + '</span></div>' +
+      '<input type="range" min="0" max="100" step="10" id="' + inputId + '" value="' + val + '"' + (bloqueado ? ' disabled' : '') +
+        ' data-pct-id="' + pctId + '" data-label-id="' + labelId + '" data-campo="' + campo + '" class="freno-slider" />' +
+      '<p class="freno-label" id="' + labelId + '">' + escapeHtml(labelTxt) + '</p>' +
+    '</div>';
+  }
+  function renderBotonRectificar(lado, activo) {
+    return '<button type="button" class="btn-texto disco-rectificar-btn' + (activo ? ' disco-rectificar-activo' : '') + '" data-toggle-rectificar="' + lado + '">' +
+      (activo ? '✓ Se rectifica (no se cambia)' : 'Rectificar en vez de cambiar') + '</button>';
+  }
+
+  function renderFrenosTaller() {
+    var frenosSolicitados = (tallerEstado.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
+    if (!frenosSolicitados) return '';
+    var nombreTrasero = tallerEstado.pastillasTraTipo === 'tambor' ? 'Balatas traseras' : 'Pastillas traseras';
+    var html = '<p class="campo-label-suelto">Estado de frenos</p>';
+    html += renderBloqueFreno('taller-pastillas-del', 'taller-del-pct', 'taller-del-label', 'Pastillas delanteras', tallerEstado.pastillasDel, false, '', 'pastillasDel');
+    html += renderBloqueFreno('taller-discos-del', 'taller-disco-del-pct', 'taller-disco-del-label', 'Discos delanteros', tallerEstado.discosDel, false, tallerEstado.discosDelRectificar ? 'Se rectifica (no se cambia)' : '', 'discosDel');
+    html += renderBotonRectificar('del', tallerEstado.discosDelRectificar);
+    html += '<p class="campo-label-suelto" style="margin-top:12px">Tipo de freno trasero</p>' +
+      '<div class="toggle-grupo">' +
+        '<button type="button" class="toggle-opt' + (tallerEstado.pastillasTraTipo !== 'tambor' ? ' activo' : '') + '" data-tipo-tra="pastillas">Pastillas traseras</button>' +
+        '<button type="button" class="toggle-opt' + (tallerEstado.pastillasTraTipo === 'tambor' ? ' activo' : '') + '" data-tipo-tra="tambor">Balatas / tambor</button>' +
+      '</div>';
+    html += renderBloqueFreno('taller-pastillas-tra', 'taller-tra-pct', 'taller-tra-label', nombreTrasero, tallerEstado.pastillasTra, tallerEstado.pastillasTraBloqueada, '', 'pastillasTra');
+    html += renderBloqueFreno('taller-discos-tra', 'taller-disco-tra-pct', 'taller-disco-tra-label', 'Discos traseros', tallerEstado.discosTra, tallerEstado.pastillasTraBloqueada, tallerEstado.discosTraRectificar ? 'Se rectifica (no se cambia)' : '', 'discosTra');
+    if (!tallerEstado.pastillasTraBloqueada) html += renderBotonRectificar('tra', tallerEstado.discosTraRectificar);
+    if (tallerEstado.pastillasTraTipo === 'tambor') {
+      html += '<button type="button" class="btn-texto" data-toggle-bloqueo-tra="1">' + (tallerEstado.pastillasTraBloqueada ? 'Desbloquear % trasero' : 'Bloquear') + '</button>';
+    }
+    return html;
+  }
+
+  function renderTareasChipsTaller() {
+    return TAREAS_CATALOGO.map(function (t) {
+      var activa = (tallerEstado.tareas || []).some(function (x) { return x.nombre === t; });
+      return '<button type="button" class="chip-tarea' + (activa ? ' chip-tarea-activo' : '') + '" data-agregar-tarea="' + escapeHtml(t) + '">' + (activa ? '✓ ' : '+ ') + escapeHtml(t) + '</button>';
+    }).join('');
+  }
+
+  function renderTareaItemTaller(t, tIdx) {
+    var necesitaDiag = requiereDiagnostico(t.nombre);
+    var faltaDiag = necesitaDiag && !t.diagnostico;
+    var bloque =
+      '<div class="tarea-item">' +
+        '<div class="tarea-nombre">' + escapeHtml(t.nombre) + (faltaDiag ? ' <span class="tarea-alerta">⚠ falta diagnóstico</span>' : '') + '</div>' +
+        '<div class="tarea-acciones">' +
+          '<button type="button" class="tarea-estado-btn' + (t.estado === 'realizado' ? ' tarea-estado-realizado' : '') + '" data-toggle-tarea-estado="1" data-tarea-idx="' + tIdx + '">' + (t.estado === 'realizado' ? '✓ Realizado' : 'Pendiente') + '</button>' +
+          '<button type="button" class="tarea-vis-btn" data-toggle-tarea-vis="1" data-tarea-idx="' + tIdx + '">' + (t.visibilidad === 'cliente' ? 'Visible cliente' : 'Interno') + '</button>' +
+          '<button type="button" class="btn-texto" data-eliminar-tarea="1" data-tarea-idx="' + tIdx + '">✕</button>' +
+        '</div>' +
+      '</div>';
+    if (necesitaDiag) {
+      var fotos = t.fotos || [];
+      var miniaturas = fotos.map(function (src, fIdx) {
+        return '<div class="foto-mini"><img src="' + src + '" alt="Foto ' + (fIdx + 1) + '" />' +
+          '<button type="button" class="foto-mini-eliminar" data-eliminar-foto="1" data-tarea-idx="' + tIdx + '" data-foto-idx="' + fIdx + '">✕</button></div>';
+      }).join('');
+      bloque += '<div class="tarea-diagnostico">' +
+        '<label>Diagnóstico de ' + escapeHtml(t.nombre) + '</label>' +
+        '<textarea rows="2" placeholder="Qué se encontró y qué se recomienda..." data-diagnostico="1" data-tarea-idx="' + tIdx + '">' + escapeHtml(t.diagnostico || '') + '</textarea>' +
+        '<label style="margin-top:8px">Fotos de lo que hay que cambiar (opcional)</label>' +
+        '<div class="fotos-grid">' + miniaturas +
+          '<label class="foto-agregar-btn">+ Agregar foto<input type="file" accept="image/*" multiple data-foto-input="1" data-tarea-idx="' + tIdx + '" hidden /></label>' +
+        '</div>' +
+      '</div>';
+    }
+    return bloque;
+  }
+
+  function renderTareasListaTaller() {
+    var tareas = tallerEstado.tareas || [];
+    if (!tareas.length) return '<p class="sin-mant">No se solicitó ninguna tarea al recibir este vehículo.</p>';
+    return tareas.map(renderTareaItemTaller).join('');
+  }
+
+  function renderTallerEstado() {
+    document.getElementById('taller-km').value = tallerEstado.kilometraje || '';
+    document.getElementById('taller-tareas-chips').innerHTML = renderTareasChipsTaller();
+    document.getElementById('taller-frenos-wrap').innerHTML = renderFrenosTaller();
+    document.getElementById('taller-tareas-lista').innerHTML = renderTareasListaTaller();
+    document.getElementById('taller-estado-general').value = tallerEstado.estadoGeneral || '';
+    document.getElementById('taller-nota-estado').value = tallerEstado.notaEstado || '';
+    ligarEventosTaller();
+  }
+
+  function ligarEventosTaller() {
+    document.querySelectorAll('#taller-tareas-chips [data-agregar-tarea]').forEach(function (b) {
+      b.onclick = function () {
+        var nombre = b.getAttribute('data-agregar-tarea');
+        tallerEstado.tareas = tallerEstado.tareas || [];
+        var existe = tallerEstado.tareas.some(function (t) { return t.nombre === nombre; });
+        if (!existe) {
+          tallerEstado.tareas.push({ nombre: nombre, estado: 'pendiente', visibilidad: 'interno', diagnostico: '', fotos: [] });
+          guardarEstadoTaller(true);
+        }
+      };
+    });
+    document.querySelectorAll('#taller-frenos-wrap .freno-slider').forEach(function (el) {
+      el.oninput = function () {
+        var pctEl = document.getElementById(el.getAttribute('data-pct-id'));
+        var labelEl = document.getElementById(el.getAttribute('data-label-id'));
+        if (pctEl) pctEl.textContent = el.value + '%';
+        if (labelEl) labelEl.textContent = labelPastillaPct(el.value);
+      };
+      el.onchange = function () {
+        var campo = el.getAttribute('data-campo');
+        if (campo) tallerEstado[campo] = el.value;
+        guardarEstadoTaller(false);
+      };
+    });
+    document.querySelectorAll('#taller-frenos-wrap [data-tipo-tra]').forEach(function (b) {
+      b.onclick = function () {
+        tallerEstado.pastillasTraTipo = b.getAttribute('data-tipo-tra');
+        tallerEstado.pastillasTraBloqueada = (tallerEstado.pastillasTraTipo === 'tambor');
+        guardarEstadoTaller(true);
+      };
+    });
+    document.querySelectorAll('#taller-frenos-wrap [data-toggle-bloqueo-tra]').forEach(function (b) {
+      b.onclick = function () { tallerEstado.pastillasTraBloqueada = !tallerEstado.pastillasTraBloqueada; guardarEstadoTaller(true); };
+    });
+    document.querySelectorAll('#taller-frenos-wrap [data-toggle-rectificar]').forEach(function (b) {
+      b.onclick = function () {
+        var lado = b.getAttribute('data-toggle-rectificar');
+        if (lado === 'del') tallerEstado.discosDelRectificar = !tallerEstado.discosDelRectificar;
+        else tallerEstado.discosTraRectificar = !tallerEstado.discosTraRectificar;
+        guardarEstadoTaller(true);
+      };
+    });
+    document.querySelectorAll('#taller-tareas-lista [data-toggle-tarea-estado]').forEach(function (b) {
+      b.onclick = function () {
+        var t = tallerEstado.tareas[Number(b.getAttribute('data-tarea-idx'))];
+        if (!t) return;
+        t.estado = (t.estado === 'realizado') ? 'pendiente' : 'realizado';
+        guardarEstadoTaller(true);
+      };
+    });
+    document.querySelectorAll('#taller-tareas-lista [data-toggle-tarea-vis]').forEach(function (b) {
+      b.onclick = function () {
+        var t = tallerEstado.tareas[Number(b.getAttribute('data-tarea-idx'))];
+        if (!t) return;
+        t.visibilidad = (t.visibilidad === 'cliente') ? 'interno' : 'cliente';
+        guardarEstadoTaller(true);
+      };
+    });
+    document.querySelectorAll('#taller-tareas-lista [data-eliminar-tarea]').forEach(function (b) {
+      b.onclick = function () {
+        tallerEstado.tareas.splice(Number(b.getAttribute('data-tarea-idx')), 1);
+        guardarEstadoTaller(true);
+      };
+    });
+    document.querySelectorAll('#taller-tareas-lista textarea[data-diagnostico]').forEach(function (el) {
+      el.onblur = function () {
+        var t = tallerEstado.tareas[Number(el.getAttribute('data-tarea-idx'))];
+        if (!t) return;
+        t.diagnostico = el.value.trim();
+        guardarEstadoTaller(false);
+      };
+    });
+    document.querySelectorAll('#taller-tareas-lista input[data-foto-input]').forEach(function (el) {
+      el.onchange = function () {
+        var tIdx = Number(el.getAttribute('data-tarea-idx'));
+        var archivos = Array.prototype.slice.call(el.files || []);
+        if (!archivos.length) return;
+        Promise.all(archivos.map(function (archivo) {
+          return new Promise(function (resolve) {
+            var lector = new FileReader();
+            lector.onload = function () { resolve(lector.result); };
+            lector.onerror = function () { resolve(null); };
+            lector.readAsDataURL(archivo);
+          });
+        })).then(function (resultados) {
+          var t = tallerEstado.tareas[tIdx];
+          if (!t) return;
+          t.fotos = t.fotos || [];
+          resultados.forEach(function (src) { if (src) t.fotos.push(src); });
+          guardarEstadoTaller(true);
+        });
+      };
+    });
+    document.querySelectorAll('#taller-tareas-lista [data-eliminar-foto]').forEach(function (b) {
+      b.onclick = function () {
+        var t = tallerEstado.tareas[Number(b.getAttribute('data-tarea-idx'))];
+        if (!t || !t.fotos) return;
+        t.fotos.splice(Number(b.getAttribute('data-foto-idx')), 1);
+        guardarEstadoTaller(true);
+      };
+    });
+  }
+
+  function guardarEstadoTaller(reRender) {
+    if (!tallerEstado || !tallerEstado.citaId) return;
+    tallerEstado.kilometraje = document.getElementById('taller-km').value.trim();
+    tallerEstado.estadoGeneral = document.getElementById('taller-estado-general').value;
+    tallerEstado.notaEstado = document.getElementById('taller-nota-estado').value.trim();
+    var body = {
+      kilometraje: tallerEstado.kilometraje,
+      pastillasDel: tallerEstado.pastillasDel,
+      pastillasTra: tallerEstado.pastillasTra,
+      discosDel: tallerEstado.discosDel,
+      discosTra: tallerEstado.discosTra,
+      pastillasTraTipo: tallerEstado.pastillasTraTipo,
+      pastillasTraBloqueada: tallerEstado.pastillasTraBloqueada,
+      discosDelRectificar: tallerEstado.discosDelRectificar,
+      discosTraRectificar: tallerEstado.discosTraRectificar,
+      estadoGeneral: tallerEstado.estadoGeneral,
+      notaEstado: tallerEstado.notaEstado,
+      tareas: tallerEstado.tareas || [],
+    };
+    api('/citas/' + tallerEstado.citaId + '/estado-taller', { method: 'PATCH', body: body })
+      .then(function () { if (reRender) renderTallerEstado(); })
+      .catch(function (e) { avisar(e.message || 'No se pudo guardar el estado del auto.', true); });
+  }
+
+  function cargarEstadoTaller(citaId) {
+    tallerEstado = null;
+    tallerVehiculo = null;
+    api('/citas/' + citaId).then(function (c) {
+      tallerEstado = {
+        citaId: c.id,
+        kilometraje: c.kilometraje || '',
+        pastillasDel: c.pastillas_del || '',
+        pastillasTra: c.pastillas_tra || '',
+        discosDel: c.discos_del || '',
+        discosTra: c.discos_tra || '',
+        pastillasTraTipo: c.pastillas_tra_tipo || 'pastillas',
+        pastillasTraBloqueada: !!c.pastillas_tra_bloqueada,
+        discosDelRectificar: !!c.discos_del_rectificar,
+        discosTraRectificar: !!c.discos_tra_rectificar,
+        estadoGeneral: c.estado_general || '',
+        notaEstado: c.nota_estado || '',
+        tareas: Array.isArray(c.tareas) ? c.tareas : [],
+      };
+      tallerVehiculo = {
+        patente: c.patente, marca: c.marca, modelo: c.modelo, anio: c.anio,
+        combustible: c.combustible, clienteNombre: c.cliente_nombre,
+      };
+      renderTallerEstado();
+    }).catch(function (e) {
+      avisar(e.message || 'No se pudo cargar el estado del auto.', true);
+    });
+  }
+
+  function fechaInformeHoy() {
+    var d = new Date();
+    function pad(n) { return String(n).padStart(2, '0'); }
+    return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+
+  function construirInformeHtmlTaller(b, v) {
+    var logoEl = document.getElementById('logo-header');
+    var logoSrc = logoEl ? logoEl.src : '';
+    var nombreCliente = v ? (v.clienteNombre || '—') : '—';
+    var marca = v ? v.marca : '';
+    var modelo = v ? v.modelo : '';
+    var anio = v ? v.anio : '';
+    var combustible = v ? (v.combustible === 'diesel' ? 'Petróleo (diésel)' : 'Bencina') : '';
+    var km = b.kilometraje || '—';
+    var nombreTrasero = b.pastillasTraTipo === 'tambor' ? 'Balatas de freno traseras' : 'Pastillas de freno traseras';
+    var nombreDiscosTrasero = b.pastillasTraTipo === 'tambor' ? 'Discos/tambores traseros' : 'Discos de freno traseros';
+
+    var PALABRA_RCM = { R: 'Reparar', C: 'Cambiar', M: 'Mantener' };
+    function filaFreno(nombre, pct, bloqueada, rectificar) {
+      var estadoTxt;
+      if (bloqueada) estadoTxt = '—';
+      else if (rectificar) estadoTxt = 'Rectificar';
+      else estadoTxt = PALABRA_RCM[rcmDePct(pct)] || '—';
+      var pctTxt = bloqueada ? '—' : ((pct === '' || pct === null || pct === undefined) ? '—' : (pct + '%'));
+      return '<tr><td>' + escapeHtml(nombre) + '</td><td class="celda-pct">' + pctTxt + '</td><td class="celda-estado-freno">' + escapeHtml(estadoTxt) + '</td></tr>';
+    }
+    var hayFrenos = (b.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
+    var filasFrenos = !hayFrenos ? '' :
+      filaFreno('Pastillas de freno delanteras', b.pastillasDel, false) +
+      filaFreno('Discos de freno delanteros', b.discosDel, false, b.discosDelRectificar) +
+      filaFreno(nombreTrasero, b.pastillasTra, b.pastillasTraBloqueada) +
+      filaFreno(nombreDiscosTrasero, b.discosTra, b.pastillasTraBloqueada, b.discosTraRectificar);
+
+    var filasTareas = (b.tareas || []).map(function (t) {
+      var estadoTxt = (t.estado === 'realizado' ? 'Realizado' : 'Pendiente') + (t.visibilidad === 'cliente' ? ' · Visible al cliente' : '');
+      var diagTxt = t.diagnostico ? ' — ' + escapeHtml(t.diagnostico) : '';
+      return '<tr><td>' + escapeHtml(t.nombre) + '</td><td colspan="3" style="text-align:left;padding-left:10px;">' + escapeHtml(estadoTxt) + diagTxt + '</td></tr>';
+    }).join('');
+
+    var observaciones = [];
+    if (hayFrenos) {
+      if (b.pastillasDel !== '') observaciones.push('Pastillas de freno delanteras en ' + b.pastillasDel + '% de vida útil restante (' + labelPastillaPct(b.pastillasDel).toLowerCase() + ').');
+      if (b.discosDel !== '') observaciones.push(b.discosDelRectificar
+        ? 'Discos de freno delanteros en ' + b.discosDel + '% — se rectifican (rebarbado) en vez de cambiarlos.'
+        : 'Discos de freno delanteros en ' + b.discosDel + '% de vida útil restante (' + labelPastillaPct(b.discosDel).toLowerCase() + ').');
+      if (b.pastillasTra !== '' && !b.pastillasTraBloqueada) observaciones.push(nombreTrasero + ' en ' + b.pastillasTra + '% de vida útil restante (' + labelPastillaPct(b.pastillasTra).toLowerCase() + ').');
+      if (b.discosTra !== '' && !b.pastillasTraBloqueada) observaciones.push(b.discosTraRectificar
+        ? nombreDiscosTrasero + ' en ' + b.discosTra + '% — se rectifican (rebarbado) en vez de cambiarlos.'
+        : nombreDiscosTrasero + ' en ' + b.discosTra + '% de vida útil restante (' + labelPastillaPct(b.discosTra).toLowerCase() + ').');
+    }
+    (b.tareas || []).forEach(function (t) {
+      if (t.nombre === 'Frenos' && !t.diagnostico) return;
+      var linea = t.nombre === 'Frenos' ? t.diagnostico : (t.nombre + ': ' + (t.estado === 'realizado' ? 'realizado.' : 'pendiente.'));
+      if (t.nombre !== 'Frenos' && t.diagnostico) linea += ' Diagnóstico: ' + t.diagnostico;
+      observaciones.push(linea);
+    });
+    if (b.notaEstado) observaciones.push(b.notaEstado);
+    if (!observaciones.length) observaciones.push('Sin observaciones.');
+    var liObs = observaciones.map(function (o) { return '<li>' + escapeHtml(o) + '</li>'; }).join('');
+
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Informe ' + escapeHtml(v ? v.patente : '') + '</title><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;color:#141413;margin:40px;font-size:13px;}' +
+      'h1{font-size:22px;margin:0 0 4px;}' +
+      '.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:20px;}' +
+      '.marca-taller{text-align:right;font-size:12px;line-height:1.5;white-space:nowrap;}' +
+      '.marca-taller img{height:46px;margin-bottom:6px;}' +
+      '.marca-taller strong{font-size:14px;display:block;}' +
+      '.datos-cliente{margin-bottom:14px;font-size:13px;}' +
+      'table{border-collapse:collapse;width:100%;margin-bottom:16px;font-size:12px;}' +
+      'td,th{border:1px solid #333;padding:5px 8px;}' +
+      '.celda-pct{text-align:center;width:70px;font-weight:700;}' +
+      '.celda-estado-freno{text-align:center;width:110px;font-weight:700;}' +
+      '.obs-box{border:1px solid #333;padding:12px 16px;}' +
+      '.obs-box h3{margin:0 0 8px;font-size:13px;}' +
+      '.obs-box ol{margin:0;padding-left:20px;}' +
+      '.acciones-no-print{margin-top:24px;}' +
+      '.acciones-no-print button{font-family:inherit;font-size:14px;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;background:#D9642E;color:#fff;}' +
+      '@media print{ .acciones-no-print{display:none;} }' +
+    '</style></head><body>' +
+      '<div class="top">' +
+        '<div><h1>INFORME DEL ESTADO DEL VEHÍCULO</h1></div>' +
+        '<div class="marca-taller">' +
+          (logoSrc ? '<img src="' + logoSrc + '" alt="Nácar">' : '') +
+          '<strong>NACAR AUTOMOTRIZ</strong>' +
+          'Camino San Alberto Hurtado 1630, Padre Hurtado<br>+56 9 8183 6269<br>tallernacarautomotriz.cl' +
+        '</div>' +
+      '</div>' +
+      '<div class="datos-cliente"><strong>NOMBRE:</strong> ' + escapeHtml(nombreCliente) + ' &nbsp;&nbsp; <strong>FECHA:</strong> ' + fechaInformeHoy() + '</div>' +
+      '<table>' +
+        '<tr><td><strong>MARCA:</strong> ' + escapeHtml(marca) + '</td><td><strong>MODELO:</strong> ' + escapeHtml(modelo) + '</td><td><strong>AÑO:</strong> ' + escapeHtml(anio) + '</td></tr>' +
+        '<tr><td><strong>COMBUSTIBLE:</strong> ' + escapeHtml(combustible) + '</td><td><strong>PATENTE:</strong> ' + escapeHtml(v ? v.patente : '') + '</td><td><strong>KILOMETRAJE:</strong> ' + escapeHtml(km) + '</td></tr>' +
+      '</table>' +
+      (hayFrenos ? '<table><tr><th>FRENOS</th><th>% VIDA ÚTIL</th><th>ESTADO</th></tr>' + filasFrenos + '</table>' : '') +
+      (filasTareas ? '<table><tr><th>TRABAJOS SOLICITADOS</th><th colspan="3">ESTADO</th></tr>' + filasTareas + '</table>' : '') +
+      '<div class="obs-box"><h3>OBSERVACIONES</h3><ol>' + liObs + '</ol></div>' +
+      '<div class="acciones-no-print"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' +
+    '</body></html>';
+  }
+
+  document.getElementById('taller-guardar').onclick = function () {
+    guardarEstadoTaller(true);
+    avisar('Estado del auto guardado.');
+  };
+  document.getElementById('taller-km').addEventListener('blur', function () { guardarEstadoTaller(false); });
+  document.getElementById('taller-estado-general').addEventListener('change', function () { guardarEstadoTaller(false); });
+  document.getElementById('taller-nota-estado').addEventListener('blur', function () { guardarEstadoTaller(false); });
+  document.getElementById('taller-generar-informe').onclick = function () {
+    if (!tallerEstado || !tallerVehiculo) return;
+    guardarEstadoTaller(false);
+    var bahiaId = document.getElementById('cita-bahia-id').value;
+    var html = construirInformeHtmlTaller(tallerEstado, tallerVehiculo);
+    var ventana = window.open('', '_blank');
+    if (!ventana) { avisar('El navegador bloqueó la ventana del informe — permite ventanas emergentes para generarlo.', true); return; }
+    ventana.document.open();
+    ventana.document.write(html);
+    ventana.document.close();
+    api('/bahias/' + bahiaId + '/liberar', { method: 'POST' }).then(function () {
+      cerrarModalCita();
+      cargarBahias();
+      cargarCalendarioSemana();
+      avisar('Informe generado — la bahía queda disponible.');
+    }).catch(function (e) { avisar(e.message || 'No se pudo liberar la bahía.', true); });
+  };
+
   function abrirModalCita(modo, datos) {
     citaModoActual = modo;
     var modal = document.getElementById('modal-cita');
@@ -879,6 +1290,8 @@
     var chatHint = document.getElementById('cita-chat-hint');
     var toggleNuevo = document.getElementById('cita-toggle-nuevo');
     var bloqueNuevo = document.getElementById('cita-vehiculo-nuevo');
+    var tallerWrap = document.getElementById('taller-estado-wrap');
+    var tallerHint = document.getElementById('taller-estado-hint');
 
     if (modo === 'nueva') {
       campoPatente.hidden = false;
@@ -888,6 +1301,10 @@
       btnEliminar.hidden = true;
       chatWrap.hidden = true;
       chatHint.hidden = false;
+      tallerWrap.hidden = true;
+      tallerHint.hidden = false;
+      tallerEstado = null;
+      tallerVehiculo = null;
       document.getElementById('cita-fecha').value = datos.fecha || '';
       document.getElementById('cita-hora-inicio').value = '';
       document.getElementById('cita-hora-fin').value = '';
@@ -922,6 +1339,9 @@
       document.getElementById('cita-chat-mensaje').value = '';
       document.getElementById('cita-chat-atrasado').checked = false;
       cargarComentariosCita(datos.id);
+      tallerHint.hidden = true;
+      tallerWrap.hidden = false;
+      cargarEstadoTaller(datos.id);
     }
     modal.hidden = false;
   }

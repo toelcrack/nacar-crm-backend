@@ -271,6 +271,79 @@ router.post('/:id/comentarios', async (req, res) => {
   }
 });
 
+// ---------- Estado del auto en el taller (frenos/discos + checklist de tareas) ----------
+
+// GET /api/citas/:id -> detalle completo de una cita, con los datos del vehículo/cliente que
+// necesita el informe impreso (marca, modelo, año, combustible, patente, nombre del cliente).
+router.get('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const r = await pool.query(
+      `SELECT c.id, c.bahia_id, c.vehiculo_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
+              c.kilometraje, c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
+              c.pastillas_tra_tipo, c.pastillas_tra_bloqueada, c.discos_del_rectificar, c.discos_tra_rectificar,
+              c.estado_general, c.nota_estado, c.tareas,
+              b.nombre AS bahia_nombre,
+              v.patente, v.marca, v.modelo, v.anio, v.combustible,
+              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
+       FROM citas c
+       JOIN bahias b ON b.id = c.bahia_id
+       JOIN vehiculos v ON v.id = c.vehiculo_id
+       LEFT JOIN clientes cl ON cl.id = v.cliente_id
+       WHERE c.id = $1`,
+      [id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo cargar el detalle de la cita.' });
+  }
+});
+
+// PATCH /api/citas/:id/estado-taller -> el mecánico/asesor va guardando acá el estado de
+// frenos/discos, el kilometraje, el estado general y el checklist de tareas (con diagnóstico y
+// fotos). Cualquier usuario logueado puede guardar — es trabajo del día a día del taller, igual
+// que el resto de "citas"/"bahías" (ver nota al inicio del archivo).
+router.patch('/:id/estado-taller', async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body || {};
+  const tareas = Array.isArray(body.tareas) ? body.tareas : [];
+  try {
+    const r = await pool.query(
+      `UPDATE citas SET
+         kilometraje = $1, pastillas_del = $2, pastillas_tra = $3, discos_del = $4, discos_tra = $5,
+         pastillas_tra_tipo = $6, pastillas_tra_bloqueada = $7,
+         discos_del_rectificar = $8, discos_tra_rectificar = $9,
+         estado_general = $10, nota_estado = $11, tareas = $12::jsonb,
+         actualizado_en = now()
+       WHERE id = $13 RETURNING id`,
+      [
+        String(body.kilometraje || '').trim() || null,
+        body.pastillasDel === '' || body.pastillasDel == null ? null : String(body.pastillasDel),
+        body.pastillasTra === '' || body.pastillasTra == null ? null : String(body.pastillasTra),
+        body.discosDel === '' || body.discosDel == null ? null : String(body.discosDel),
+        body.discosTra === '' || body.discosTra == null ? null : String(body.discosTra),
+        body.pastillasTraTipo === 'tambor' ? 'tambor' : 'pastillas',
+        Boolean(body.pastillasTraBloqueada),
+        Boolean(body.discosDelRectificar),
+        Boolean(body.discosTraRectificar),
+        String(body.estadoGeneral || '').trim() || null,
+        String(body.notaEstado || '').trim() || null,
+        JSON.stringify(tareas),
+        id,
+      ]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    res.json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo guardar el estado del auto.' });
+  }
+});
+
 // DELETE /api/citas/:id -> cancela la cita agendada (no borra nada del historial del auto,
 // esto es solo el calendario del taller).
 router.delete('/:id', async (req, res) => {

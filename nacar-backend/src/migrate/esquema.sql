@@ -173,3 +173,25 @@ CREATE TABLE IF NOT EXISTS catalogo_mann (
 );
 
 CREATE INDEX IF NOT EXISTS idx_catalogo_mann_marca_norm ON catalogo_mann (marca_norm);
+
+-- Estado del auto en el taller (agregado 23-oct-2026): lo que el mecánico va completando
+-- mientras el vehículo está en la bahía — estado de frenos/discos y el checklist de tareas que
+-- pidió el asesor al recibir el auto (con diagnóstico y fotos opcionales para las tareas que lo
+-- requieren, ej. Simulador de camino). Vive en "citas" porque es estado de la VISITA actual, no
+-- del vehículo en general — cada vez que el auto vuelve con una cita nueva, parte en blanco.
+-- "tareas" es JSONB: arreglo de {nombre, estado, visibilidad, diagnostico, fotos:[dataURL,...]}.
+-- Las fotos se guardan como data URL (base64) directo en la fila — simple para partir; si el
+-- volumen de fotos crece mucho más adelante, se puede migrar a un storage externo (ej. S3) sin
+-- perder los datos ya cargados.
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS kilometraje TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_del TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_del TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_tra TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_tipo TEXT NOT NULL DEFAULT 'pastillas';
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_bloqueada BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_del_rectificar BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_tra_rectificar BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS estado_general TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS nota_estado TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS tareas JSONB NOT NULL DEFAULT '[]'::jsonb;
