@@ -881,22 +881,19 @@
   function labelPastillaPct(pct) {
     if (pct === '' || pct === null || pct === undefined) return 'Sin registrar';
     pct = Number(pct);
-    if (pct >= 60) return 'Muy buen estado';
-    if (pct >= 30) return 'Revisar pronto';
+    if (pct >= 20) return 'Muy buen estado';
     return 'Cambiar ahora';
   }
   function claseChipPct(pct) {
     if (pct === '' || pct === null || pct === undefined) return '';
     pct = Number(pct);
-    if (pct >= 60) return '';
-    if (pct >= 30) return 'chip-revisar';
+    if (pct >= 20) return '';
     return 'chip-problema';
   }
   function rcmDePct(pct) {
     if (pct === '' || pct === null || pct === undefined) return '';
     pct = Number(pct);
-    if (pct >= 60) return 'M';
-    if (pct >= 30) return 'R';
+    if (pct >= 20) return 'M';
     return 'C';
   }
 
@@ -1165,7 +1162,7 @@
     var nombreTrasero = b.pastillasTraTipo === 'tambor' ? 'Balatas de freno traseras' : 'Pastillas de freno traseras';
     var nombreDiscosTrasero = b.pastillasTraTipo === 'tambor' ? 'Discos/tambores traseros' : 'Discos de freno traseros';
 
-    var PALABRA_RCM = { R: 'Reparar', C: 'Cambiar', M: 'Mantener' };
+    var PALABRA_RCM = { C: 'Cambiar', M: 'Mantener' };
     function filaFreno(nombre, pct, bloqueada, rectificar) {
       var estadoTxt;
       if (bloqueada) estadoTxt = '—';
