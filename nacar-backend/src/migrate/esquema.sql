@@ -247,3 +247,13 @@ CREATE INDEX IF NOT EXISTS idx_citas_pendientes ON citas (fecha) WHERE ingresado
 -- hora_fin no-NULL desde que se creó — al ingresarla, quedaba con ingresado_en seteado pero
 -- "ocupada" seguía evaluando falso porque el chequeo viejo usaba hora_fin IS NULL.
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS salida_en TIMESTAMPTZ;
+
+-- Sensor de desgaste y "reemplazar" en pastillas/balatas (29-oct-2026): a pedido del usuario,
+-- junto al % de vida útil de las pastillas delanteras y traseras (pastillas o balatas, según el
+-- tipo elegido) se registra si el auto tiene sensor de desgaste y si se decide reemplazar la
+-- pieza, como un dato aparte del % — no reemplaza el % existente, se agrega. Solo aplica a
+-- pastillas/balatas, no a discos/tambor (que ya tienen su propio "Rectificar").
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_del_sensor BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_del_reemplazar BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_sensor BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_reemplazar BOOLEAN NOT NULL DEFAULT false;

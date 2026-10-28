@@ -992,6 +992,22 @@
     return '<button type="button" class="btn-texto disco-rectificar-btn' + (activo ? ' disco-rectificar-activo' : '') + '" data-toggle-rectificar="' + lado + '">' +
       (activo ? '✓ Se rectifica (no se cambia)' : 'Rectificar en vez de cambiar') + '</button>';
   }
+  // Sensor de desgaste + reemplazar (29-oct-2026): solo para pastillas/balatas (no discos/tambor),
+  // a pedido del usuario — es información aparte del % de vida útil, no lo reemplaza.
+  function renderSensorYReemplazo(lado, tieneSensor, reemplazar) {
+    return '<div class="freno-extra">' +
+      '<div class="toggle-grupo toggle-grupo-chico">' +
+        '<span class="campo-label-suelto" style="margin:0 8px 0 0">¿Tiene sensor?</span>' +
+        '<button type="button" class="toggle-opt' + (!tieneSensor ? ' activo' : '') + '" data-sensor="' + lado + '" data-valor="0">No</button>' +
+        '<button type="button" class="toggle-opt' + (tieneSensor ? ' activo' : '') + '" data-sensor="' + lado + '" data-valor="1">Sí</button>' +
+      '</div>' +
+      '<div class="toggle-grupo toggle-grupo-chico">' +
+        '<span class="campo-label-suelto" style="margin:0 8px 0 0">¿Para el cambio?</span>' +
+        '<button type="button" class="toggle-opt' + (!reemplazar ? ' activo' : '') + '" data-reemplazar="' + lado + '" data-valor="0">No reemplazar</button>' +
+        '<button type="button" class="toggle-opt' + (reemplazar ? ' activo' : '') + '" data-reemplazar="' + lado + '" data-valor="1">Reemplazar</button>' +
+      '</div>' +
+    '</div>';
+  }
 
   function renderFrenosTaller() {
     var frenosSolicitados = (tallerEstado.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
@@ -1005,6 +1021,7 @@
     var nombreDiscoTambor = esTambor ? 'Tambor trasero' : 'Discos traseros';
     var html = '<p class="campo-label-suelto">Estado de frenos</p>';
     html += renderBloqueFreno('taller-pastillas-del', 'taller-del-pct', 'taller-del-label', 'Pastillas delanteras', tallerEstado.pastillasDel, false, '', 'pastillasDel');
+    html += renderSensorYReemplazo('del', tallerEstado.pastillasDelSensor, tallerEstado.pastillasDelReemplazar);
     html += renderBloqueFreno('taller-discos-del', 'taller-disco-del-pct', 'taller-disco-del-label', 'Discos delanteros', tallerEstado.discosDel, false, tallerEstado.discosDelRectificar ? 'Se rectifica (no se cambia)' : '', 'discosDel');
     html += renderBotonRectificar('del', tallerEstado.discosDelRectificar);
     html += '<p class="campo-label-suelto" style="margin-top:12px">Tipo de freno trasero</p>' +
@@ -1013,6 +1030,7 @@
         '<button type="button" class="toggle-opt' + (esTambor ? ' activo' : '') + '" data-tipo-tra="tambor">Balatas / tambor</button>' +
       '</div>';
     html += renderBloqueFreno('taller-pastillas-tra', 'taller-tra-pct', 'taller-tra-label', nombreTrasero, tallerEstado.pastillasTra, false, '', 'pastillasTra');
+    html += renderSensorYReemplazo('tra', tallerEstado.pastillasTraSensor, tallerEstado.pastillasTraReemplazar);
     html += renderBloqueFreno('taller-discos-tra', 'taller-disco-tra-pct', 'taller-disco-tra-label', nombreDiscoTambor, tallerEstado.discosTra, false, tallerEstado.discosTraRectificar ? 'Se rectifica (no se cambia)' : '', 'discosTra');
     html += renderBotonRectificar('tra', tallerEstado.discosTraRectificar);
     return html;
@@ -1110,6 +1128,24 @@
         guardarEstadoTaller(true);
       };
     });
+    document.querySelectorAll('#taller-frenos-wrap [data-sensor]').forEach(function (b) {
+      b.onclick = function () {
+        var lado = b.getAttribute('data-sensor');
+        var valor = b.getAttribute('data-valor') === '1';
+        if (lado === 'del') tallerEstado.pastillasDelSensor = valor;
+        else tallerEstado.pastillasTraSensor = valor;
+        guardarEstadoTaller(true);
+      };
+    });
+    document.querySelectorAll('#taller-frenos-wrap [data-reemplazar]').forEach(function (b) {
+      b.onclick = function () {
+        var lado = b.getAttribute('data-reemplazar');
+        var valor = b.getAttribute('data-valor') === '1';
+        if (lado === 'del') tallerEstado.pastillasDelReemplazar = valor;
+        else tallerEstado.pastillasTraReemplazar = valor;
+        guardarEstadoTaller(true);
+      };
+    });
     document.querySelectorAll('#taller-tareas-lista [data-toggle-tarea-estado]').forEach(function (b) {
       b.onclick = function () {
         var t = tallerEstado.tareas[Number(b.getAttribute('data-tarea-idx'))];
@@ -1186,6 +1222,10 @@
       pastillasTraBloqueada: tallerEstado.pastillasTraBloqueada,
       discosDelRectificar: tallerEstado.discosDelRectificar,
       discosTraRectificar: tallerEstado.discosTraRectificar,
+      pastillasDelSensor: tallerEstado.pastillasDelSensor,
+      pastillasDelReemplazar: tallerEstado.pastillasDelReemplazar,
+      pastillasTraSensor: tallerEstado.pastillasTraSensor,
+      pastillasTraReemplazar: tallerEstado.pastillasTraReemplazar,
       estadoGeneral: tallerEstado.estadoGeneral,
       notaEstado: tallerEstado.notaEstado,
       tareas: tallerEstado.tareas || [],
@@ -1210,6 +1250,10 @@
         pastillasTraBloqueada: !!c.pastillas_tra_bloqueada,
         discosDelRectificar: !!c.discos_del_rectificar,
         discosTraRectificar: !!c.discos_tra_rectificar,
+        pastillasDelSensor: !!c.pastillas_del_sensor,
+        pastillasDelReemplazar: !!c.pastillas_del_reemplazar,
+        pastillasTraSensor: !!c.pastillas_tra_sensor,
+        pastillasTraReemplazar: !!c.pastillas_tra_reemplazar,
         estadoGeneral: c.estado_general || '',
         notaEstado: c.nota_estado || '',
         tareas: Array.isArray(c.tareas) ? c.tareas : [],
@@ -1243,19 +1287,21 @@
     var nombreDiscosTrasero = b.pastillasTraTipo === 'tambor' ? 'Discos/tambores traseros' : 'Discos de freno traseros';
 
     var PALABRA_RCM = { C: 'Cambiar', M: 'Mantener' };
-    function filaFreno(nombre, pct, bloqueada, rectificar) {
+    function filaFreno(nombre, pct, bloqueada, rectificar, sensor, reemplazar) {
       var estadoTxt;
       if (bloqueada) estadoTxt = '—';
       else if (rectificar) estadoTxt = 'Rectificar';
+      else if (reemplazar) estadoTxt = 'Cambiar';
       else estadoTxt = PALABRA_RCM[rcmDePct(pct)] || '—';
       var pctTxt = bloqueada ? '—' : ((pct === '' || pct === null || pct === undefined) ? '—' : (pct + '%'));
-      return '<tr><td>' + escapeHtml(nombre) + '</td><td class="celda-pct">' + pctTxt + '</td><td class="celda-estado-freno">' + escapeHtml(estadoTxt) + '</td></tr>';
+      var nombreTxt = nombre + (sensor ? ' (con sensor)' : '');
+      return '<tr><td>' + escapeHtml(nombreTxt) + '</td><td class="celda-pct">' + pctTxt + '</td><td class="celda-estado-freno">' + escapeHtml(estadoTxt) + '</td></tr>';
     }
     var hayFrenos = (b.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
     var filasFrenos = !hayFrenos ? '' :
-      filaFreno('Pastillas de freno delanteras', b.pastillasDel, false) +
+      filaFreno('Pastillas de freno delanteras', b.pastillasDel, false, false, b.pastillasDelSensor, b.pastillasDelReemplazar) +
       filaFreno('Discos de freno delanteros', b.discosDel, false, b.discosDelRectificar) +
-      filaFreno(nombreTrasero, b.pastillasTra, false) +
+      filaFreno(nombreTrasero, b.pastillasTra, false, false, b.pastillasTraSensor, b.pastillasTraReemplazar) +
       filaFreno(nombreDiscosTrasero, b.discosTra, false, b.discosTraRectificar);
 
     var filasTareas = (b.tareas || []).map(function (t) {
@@ -1266,11 +1312,11 @@
 
     var observaciones = [];
     if (hayFrenos) {
-      if (b.pastillasDel !== '') observaciones.push('Pastillas de freno delanteras en ' + b.pastillasDel + '% de vida útil restante (' + labelPastillaPct(b.pastillasDel).toLowerCase() + ').');
+      if (b.pastillasDel !== '') observaciones.push('Pastillas de freno delanteras en ' + b.pastillasDel + '% de vida útil restante (' + labelPastillaPct(b.pastillasDel).toLowerCase() + ').' + (b.pastillasDelSensor ? ' Tiene sensor de desgaste.' : '') + (b.pastillasDelReemplazar ? ' Se marcó para reemplazar.' : ''));
       if (b.discosDel !== '') observaciones.push(b.discosDelRectificar
         ? 'Discos de freno delanteros en ' + b.discosDel + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : 'Discos de freno delanteros en ' + b.discosDel + '% de vida útil restante (' + labelPastillaPct(b.discosDel).toLowerCase() + ').');
-      if (b.pastillasTra !== '') observaciones.push(nombreTrasero + ' en ' + b.pastillasTra + '% de vida útil restante (' + labelPastillaPct(b.pastillasTra).toLowerCase() + ').');
+      if (b.pastillasTra !== '') observaciones.push(nombreTrasero + ' en ' + b.pastillasTra + '% de vida útil restante (' + labelPastillaPct(b.pastillasTra).toLowerCase() + ').' + (b.pastillasTraSensor ? ' Tiene sensor de desgaste.' : '') + (b.pastillasTraReemplazar ? ' Se marcó para reemplazar.' : ''));
       if (b.discosTra !== '') observaciones.push(b.discosTraRectificar
         ? nombreDiscosTrasero + ' en ' + b.discosTra + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : nombreDiscosTrasero + ' en ' + b.discosTra + '% de vida útil restante (' + labelPastillaPct(b.discosTra).toLowerCase() + ').');
