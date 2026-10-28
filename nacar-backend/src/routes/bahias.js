@@ -11,10 +11,13 @@ router.use(requireAuth);
 // citas.js — la misma tabla "citas" que alimenta el calendario de abajo. Y, desde el
 // 28-oct-2026 (segunda ronda), ya NO depende de la hora agendada (hora_inicio <= ahora): una
 // bahía está "ocupada" si y solo si alguien confirmó manualmente el ingreso de un auto
-// (ingresado_en) y todavía no se liberó (hora_fin IS NULL) — sin importar qué hora tenía
-// agendada ni qué bahía había sugerido Andy al momento de agendar. Esto evita que una cita
-// agendada "se ocupe sola" antes de que el auto haya llegado de verdad, y permite que el
-// mecánico la ingrese en CUALQUIER bahía disponible, no solo en la sugerida.
+// (ingresado_en) y todavía no se liberó. "Todavía no se liberó" se mide con la columna
+// salida_en (agregada 28-oct-2026, tercera ronda) — NO con hora_fin, que es solo la hora de
+// término AGENDADA por Andy y puede venir no-NULL desde que se creó la cita (ej. "10:00-11:00"),
+// mucho antes de que el auto siquiera entrara. Usar hora_fin acá era un bug real: una cita con
+// hora_fin agendada nunca se mostraba como ocupada aunque ya estuviera ingresada. Esto evita
+// que una cita agendada "se ocupe sola" antes de que el auto haya llegado de verdad, y permite
+// que el mecánico la ingrese en CUALQUIER bahía disponible, no solo en la sugerida.
 const SQL_OCUPACION_ACTUAL = `
   SELECT b.id, b.nombre, b.tipo, b.orden,
          c.id AS cita_id, c.fecha, c.nota, c.atrasado, c.hora_inicio, c.hora_fin, c.ingresado_en,
@@ -26,7 +29,7 @@ const SQL_OCUPACION_ACTUAL = `
   FROM bahias b
   LEFT JOIN LATERAL (
     SELECT * FROM citas c2
-    WHERE c2.bahia_id = b.id AND c2.ingresado_en IS NOT NULL AND c2.hora_fin IS NULL
+    WHERE c2.bahia_id = b.id AND c2.ingresado_en IS NOT NULL AND c2.salida_en IS NULL
     ORDER BY c2.ingresado_en DESC
     LIMIT 1
   ) c ON true
@@ -64,7 +67,7 @@ router.post('/:id/asignar', async (req, res) => {
     if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
 
     const ocupacion = await pool.query(
-      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND hora_fin IS NULL
+      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND salida_en IS NULL
        ORDER BY ingresado_en DESC LIMIT 1`,
       [id]
     );
@@ -97,16 +100,17 @@ router.post('/:id/asignar', async (req, res) => {
   }
 });
 
-// POST /api/bahias/:id/liberar -> cierra la cita en curso en esa bahía (le pone hora de
-// término = ahora, en hora de Chile). No la borra: queda en el calendario de hoy como un
-// bloque ya terminado, con su historial de comentarios intacto.
+// POST /api/bahias/:id/liberar -> cierra la cita en curso en esa bahía (le pone salida_en =
+// ahora). No la borra: queda en el calendario de hoy como un bloque ya terminado, con su
+// historial de comentarios intacto. OJO: NO toca hora_fin — esa columna sigue siendo solo la
+// hora de término AGENDADA por Andy (dato informativo), nunca la hora real de salida.
 router.post('/:id/liberar', async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query(
-      `UPDATE citas SET hora_fin = (now() AT TIME ZONE 'America/Santiago')::time, actualizado_en = now()
+      `UPDATE citas SET salida_en = now(), actualizado_en = now()
        WHERE id = (
-         SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND hora_fin IS NULL
+         SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND salida_en IS NULL
          ORDER BY ingresado_en DESC LIMIT 1
        )
        RETURNING id`,

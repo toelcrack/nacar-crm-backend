@@ -132,6 +132,14 @@ CREATE TABLE IF NOT EXISTS citas (
   -- mecánico (ver POST /api/citas/:id/ingresar), marcada aquí. TIMESTAMPTZ para que "ahora" sea
   -- el instante real sin depender de en qué zona horaria esté configurado el servidor.
   ingresado_en TIMESTAMPTZ,
+  -- Momento real en que el auto salió de la bahía (agregado 28-oct-2026, tercera ronda) —
+  -- DISTINTO de hora_fin, que es solo la hora de término AGENDADA por Andy (ej. "10:00-11:00"),
+  -- un dato informativo que puede venir seteado desde que se creó la cita, antes de que el auto
+  -- siquiera entrara. Usar hora_fin para decidir "ocupada" era el bug: una cita agendada con
+  -- hora_fin ya traía ese valor no-NULL aunque el auto recién se estuviera ingresando, por lo que
+  -- nunca aparecía como ocupando la bahía. salida_en es TIMESTAMPTZ y solo lo pone
+  -- POST /bahias/:id/liberar — "ocupada" pasa a ser ingresado_en IS NOT NULL AND salida_en IS NULL.
+  salida_en TIMESTAMPTZ,
   -- El cliente agendó pero nunca llegó — distinto de cancelar por error: el registro queda
   -- (útil a futuro para medir inasistencia), solo deja de contar como "pendiente".
   no_show BOOLEAN NOT NULL DEFAULT false,
@@ -231,3 +239,11 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS no_show BOOLEAN NOT NULL DEFAULT fals
 -- dropearlo primero para que quede con la condición correcta.
 DROP INDEX IF EXISTS idx_citas_pendientes;
 CREATE INDEX IF NOT EXISTS idx_citas_pendientes ON citas (fecha) WHERE ingresado_en IS NULL AND NOT no_show;
+
+-- salida_en (28-oct-2026, tercera ronda — ver comentario junto a ingresado_en en el CREATE
+-- TABLE más arriba): separa "hora de término agendada" (hora_fin, informativa) de "momento real
+-- en que la bahía quedó libre" (salida_en, lo único que ahora decide "ocupada"). Bug real
+-- encontrado en producción: una cita de Andy con hora_inicio/hora_fin "10:00-11:00" ya traía
+-- hora_fin no-NULL desde que se creó — al ingresarla, quedaba con ingresado_en seteado pero
+-- "ocupada" seguía evaluando falso porque el chequeo viejo usaba hora_fin IS NULL.
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS salida_en TIMESTAMPTZ;
