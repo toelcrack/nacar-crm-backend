@@ -63,6 +63,7 @@ router.get('/', async (req, res) => {
     }
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
+              c.ingresado_en, c.no_show,
               b.nombre AS bahia_nombre,
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
@@ -189,20 +190,27 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET /api/citas/pendientes -> citas de HOY que todavía no tienen elevador/patio asignado
-// (bahia_id IS NULL) — esta es la lista que ve el mecánico en el selector de cada tarjeta de
-// elevador "Disponible" para elegir qué auto agendado por Andy va a entrar ahí. Debe ir ANTES
-// de "GET /:id" para que Express no la confunda con un id.
+// GET /api/citas/pendientes -> citas de HOY que todavía no han ENTRADO FÍSICAMENTE
+// (ingresado_en IS NULL) y que no fueron marcadas como "cliente no llegó" — esta es la lista
+// que ve el mecánico en el selector de CUALQUIER tarjeta de elevador/patio para elegir qué auto
+// va a entrar ahí. No filtra por bahia_id: aunque Andy haya sugerido un elevador al agendar (o
+// la cita sea de antes de este cambio y ya tenga uno asignado), el auto puede entrar en
+// cualquier bahía disponible — por eso se incluye el nombre de la bahía sugerida (si hay) para
+// que el mecánico la vea como referencia, no como algo obligatorio. Debe ir ANTES de "GET /:id"
+// para que Express no la confunda con un id.
 router.get('/pendientes', async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT c.id, c.fecha, c.hora_inicio, c.hora_fin, c.nota,
+      `SELECT c.id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.bahia_id,
+              b.nombre AS bahia_sugerida,
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
        FROM citas c
        JOIN vehiculos v ON v.id = c.vehiculo_id
        LEFT JOIN clientes cl ON cl.id = v.cliente_id
-       WHERE c.bahia_id IS NULL AND c.fecha = CURRENT_DATE
+       LEFT JOIN bahias b ON b.id = c.bahia_id
+       WHERE c.ingresado_en IS NULL AND NOT c.no_show
+         AND c.fecha = (now() AT TIME ZONE 'America/Santiago')::date
        ORDER BY c.hora_inicio ASC, c.id ASC`
     );
     res.json(r.rows);
@@ -213,12 +221,14 @@ router.get('/pendientes', async (req, res) => {
   }
 });
 
-// POST /api/citas/:id/ingresar -> el mecánico toma una cita pendiente (agendada por Andy, sin
-// elevador) y la ingresa físicamente a una bahía (elevador o patio) disponible. Reusa el mismo
-// chequeo de ocupación que src/routes/bahias.js (POST /:id/asignar): si la bahía ya tiene un
-// auto ahora mismo, no se puede. Al ingresar se actualiza hora_inicio a AHORA, igual que un
-// walk-in — así queda "ocupada ahora" de inmediato en la vista de bahías, sin importar la hora
-// que Andy haya agendado originalmente.
+// POST /api/citas/:id/ingresar -> el mecánico toma una cita pendiente (haya tenido o no una
+// bahía sugerida por Andy) y la ingresa físicamente a la bahía que elija — puede ser distinta
+// de la sugerida (ej. la sugerida se liberó más tarde de lo esperado y otra quedó libre antes).
+// Reusa el mismo chequeo de ocupación que src/routes/bahias.js (POST /:id/asignar): si la bahía
+// ya tiene un auto adentro ahora mismo, no se puede. "Ocupada" ya NO depende de la hora
+// agendada — depende solo de que alguien haya confirmado el ingreso (ingresado_en) y todavía no
+// se haya liberado (hora_fin IS NULL). La fecha/hora originalmente agendada por Andy se deja
+// intacta (sirve de registro); ingresado_en guarda el momento real de entrada.
 router.post('/:id/ingresar', async (req, res) => {
   const id = Number(req.params.id);
   const bahiaId = Number((req.body || {}).bahia_id);
@@ -228,16 +238,18 @@ router.post('/:id/ingresar', async (req, res) => {
     const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
     if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
 
-    const c = await pool.query('SELECT id, bahia_id, fecha FROM citas WHERE id = $1', [id]);
+    const c = await pool.query('SELECT id, ingresado_en, no_show FROM citas WHERE id = $1', [id]);
     if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
-    if (c.rows[0].bahia_id) {
-      return res.status(409).json({ error: 'Esta cita ya tiene un elevador asignado.' });
+    if (c.rows[0].ingresado_en) {
+      return res.status(409).json({ error: 'Este auto ya fue ingresado antes.' });
+    }
+    if (c.rows[0].no_show) {
+      return res.status(409).json({ error: 'Esta cita quedó marcada como "cliente no llegó" — agenda una cita nueva si llegó después de todo.' });
     }
 
     const ocupacion = await pool.query(
-      `SELECT id FROM citas WHERE bahia_id = $1 AND fecha = CURRENT_DATE
-         AND hora_inicio <= CURRENT_TIME AND (hora_fin IS NULL OR hora_fin > CURRENT_TIME)
-       ORDER BY hora_inicio DESC LIMIT 1`,
+      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND hora_fin IS NULL
+       ORDER BY ingresado_en DESC LIMIT 1`,
       [bahiaId]
     );
     if (ocupacion.rows[0]) {
@@ -245,8 +257,7 @@ router.post('/:id/ingresar', async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE citas SET bahia_id = $1, fecha = CURRENT_DATE, hora_inicio = CURRENT_TIME,
-              actualizado_en = now()
+      `UPDATE citas SET bahia_id = $1, ingresado_en = now(), actualizado_en = now()
        WHERE id = $2`,
       [bahiaId, id]
     );
@@ -255,6 +266,29 @@ router.post('/:id/ingresar', async (req, res) => {
     // eslint-disable-next-line no-console
     console.error(e);
     res.status(500).json({ error: 'No se pudo ingresar el vehículo al elevador.' });
+  }
+});
+
+// POST /api/citas/:id/no-show -> marca que el cliente agendó pero nunca llegó. Distinto de
+// "Cancelar cita" (que borra el registro por completo, para corregir un error): esto deja la
+// cita guardada con no_show=true, solo deja de contar como "pendiente" (útil a futuro para
+// medir inasistencia). Solo tiene sentido para una cita que todavía no había entrado.
+router.post('/:id/no-show', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const r = await pool.query(
+      `UPDATE citas SET no_show = true, actualizado_en = now()
+       WHERE id = $1 AND ingresado_en IS NULL RETURNING id`,
+      [id]
+    );
+    if (!r.rows[0]) {
+      return res.status(409).json({ error: 'No se pudo marcar — revisa si esta cita ya fue ingresada.' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo marcar como "cliente no llegó".' });
   }
 });
 
@@ -355,6 +389,7 @@ router.get('/:id', async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.vehiculo_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
+              c.ingresado_en, c.no_show,
               c.kilometraje, c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
               c.pastillas_tra_tipo, c.pastillas_tra_bloqueada, c.discos_del_rectificar, c.discos_tra_rectificar,
               c.estado_general, c.nota_estado, c.tareas,

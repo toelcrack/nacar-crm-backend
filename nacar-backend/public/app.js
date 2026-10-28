@@ -45,6 +45,16 @@
     function pad(n) { return String(n).padStart(2, '0'); }
     return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
+  // Para timestamps reales (ej. ingresado_en) — a diferencia de horaCorta (que recorta un
+  // string "HH:MM:SS" de un campo TIME), esto parte de un instante real y muestra la hora en
+  // el huso horario del navegador de quien lo mira (el equipo del taller, en Chile).
+  function horaDeTimestamp(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    function pad(n) { return String(n).padStart(2, '0'); }
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
 
   function avisar(msg, esError) {
     var a = document.getElementById('aviso');
@@ -669,7 +679,9 @@
             if (c) {
               abrirModalCita('editar', {
                 id: c.id,
-                bahia_id: null,
+                bahia_id: c.bahia_id,
+                bahia_nombre: c.bahia_sugerida,
+                ingresado_en: null,
                 hora_inicio: c.hora_inicio,
                 hora_fin: c.hora_fin,
                 nota: c.nota,
@@ -700,6 +712,7 @@
       }
       sel.innerHTML = '<option value="">Elegir cita pendiente...</option>' + citasPendientesCache.map(function (c) {
         var etiqueta = horaCorta(c.hora_inicio) + ' — ' + c.patente + ' ' + (c.marca || '') + ' ' + (c.modelo || '');
+        if (c.bahia_sugerida) etiqueta += ' (sugerido: ' + c.bahia_sugerida + ')';
         return '<option value="' + c.id + '">' + escapeHtml(etiqueta.trim()) + '</option>';
       }).join('');
       if (valorPrevio && citasPendientesCache.some(function (c) { return String(c.id) === valorPrevio; })) {
@@ -723,11 +736,12 @@
 
   function renderCitaPendienteChip(c) {
     var notaTxt = c.nota ? ' · ' + escapeHtml(c.nota) : '';
+    var sugeridaTxt = c.bahia_sugerida ? ' · sugerido: ' + escapeHtml(c.bahia_sugerida) : '';
     return '<button type="button" class="cita-pendiente-chip" data-cita-id="' + c.id + '">' +
       '<span class="cita-pendiente-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
       '<span class="cita-pendiente-patente">' + escapeHtml(c.patente) + '</span>' +
       '<span class="cita-pendiente-auto">' + escapeHtml(c.marca || '') + ' ' + escapeHtml(c.modelo || '') +
-        (c.cliente_nombre ? ' · ' + escapeHtml(c.cliente_nombre) : '') + notaTxt + '</span>' +
+        (c.cliente_nombre ? ' · ' + escapeHtml(c.cliente_nombre) : '') + notaTxt + sugeridaTxt + '</span>' +
     '</button>';
   }
 
@@ -777,7 +791,7 @@
       atrasadoHtml +
       '<div class="bahia-auto">' + autoLinea + '</div>' +
       (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
-      '<div class="bahia-desde">Desde ' + horaCorta(b.hora_inicio) + ' (hoy)</div>' +
+      '<div class="bahia-desde">Desde ' + horaDeTimestamp(b.ingresado_en) + '</div>' +
       notaHtml +
       '<div class="acciones-form">' +
         '<button class="btn-texto" id="bahia-detalle-' + b.id + '" type="button">Ver detalle y comentarios</button>' +
@@ -803,6 +817,7 @@
         id: b.cita_id,
         bahia_id: b.id,
         bahia_nombre: b.nombre,
+        ingresado_en: b.ingresado_en,
         hora_inicio: b.hora_inicio,
         hora_fin: b.hora_fin,
         nota: b.nota,
@@ -811,7 +826,7 @@
         marca: b.marca,
         modelo: b.modelo,
         cliente_nombre: b.cliente_nombre,
-        fecha: ymd(new Date()),
+        fecha: b.fecha,
       });
     };
   }
@@ -871,6 +886,11 @@
   var calSemanaInicio = lunesDeSemana(new Date());
   var timerCitaPatente = null;
   var citaModoActual = 'nueva';
+  // Si la cita actualmente abierta en el modal ya fue ingresada físicamente a una bahía — se
+  // usa para decidir si "Terminar y generar informe" tiene que liberar esa bahía o no. No basta
+  // con mirar si hay un bahia_id elegido: desde el 28-oct-2026 ese campo puede ser solo una
+  // SUGERENCIA de Andy en una cita que todavía no entra a ningún lado.
+  var citaActualIngresada = false;
   var calCitasCache = [];
 
   function cargarCalendarioSemana() {
@@ -909,8 +929,8 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + '" data-cita-id="' + c.id + '">' +
-              (c.atrasado ? '⚠️ ' : '') +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + '" data-cita-id="' + c.id + '">' +
+              (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
               '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
@@ -1356,10 +1376,12 @@
     ventana.document.open();
     ventana.document.write(html);
     ventana.document.close();
-    // Si la cita todavía no tiene elevador asignado (quedó pendiente), no hay bahía que liberar.
-    if (!bahiaId) {
+    // Solo hay bahía que liberar si el auto llegó a entrar físicamente de verdad — un bahia_id
+    // "sugerido" en una cita que nunca se ingresó no ocupa nada.
+    if (!bahiaId || !citaActualIngresada) {
       cerrarModalCita();
       cargarCitasPendientes();
+      cargarCalendarioSemana();
       avisar('Informe generado.');
       return;
     }
@@ -1379,12 +1401,16 @@
     btnGuardarCita.textContent = 'Guardar';
     document.getElementById('cita-id').value = modo === 'editar' ? datos.id : '';
     document.getElementById('cita-bahia-id').value = datos.bahia_id || '';
-    document.getElementById('cita-bahia-nombre').value = datos.bahia_id ? (datos.bahia_nombre || '') : 'Pendiente (sin elevador asignado)';
+    citaActualIngresada = modo === 'editar' && !!datos.ingresado_en;
+    document.getElementById('cita-bahia-nombre').value = datos.ingresado_en
+      ? (datos.bahia_nombre || '') + ' — ya ingresado'
+      : (datos.bahia_id ? 'Sugerido: ' + (datos.bahia_nombre || '') : 'Pendiente (sin elevador asignado)');
     document.getElementById('modal-cita-titulo').textContent = modo === 'editar' ? 'Editar cita' : 'Nueva cita';
 
     var campoPatente = document.getElementById('cita-campo-patente');
     var vehiculoTxt = document.getElementById('cita-vehiculo-txt');
     var btnEliminar = document.getElementById('cita-eliminar');
+    var btnNoLlego = document.getElementById('cita-no-llego');
     var chatWrap = document.getElementById('cita-chat-wrap');
     var chatHint = document.getElementById('cita-chat-hint');
     var toggleNuevo = document.getElementById('cita-toggle-nuevo');
@@ -1398,6 +1424,7 @@
       document.getElementById('cita-dl-patente').innerHTML = '';
       vehiculoTxt.hidden = true;
       btnEliminar.hidden = true;
+      btnNoLlego.hidden = true;
       chatWrap.hidden = true;
       chatHint.hidden = false;
       tallerWrap.hidden = true;
@@ -1429,6 +1456,10 @@
       btnEliminar.hidden = false;
       btnEliminar.removeAttribute('data-confirmar');
       btnEliminar.textContent = 'Cancelar cita';
+      // "Cliente no llegó" solo tiene sentido mientras el auto todavía no entró físicamente.
+      btnNoLlego.hidden = !!datos.ingresado_en;
+      btnNoLlego.removeAttribute('data-confirmar');
+      btnNoLlego.textContent = 'Cliente no llegó';
       document.getElementById('cita-fecha').value = String(datos.fecha).slice(0, 10);
       document.getElementById('cita-hora-inicio').value = horaCorta(datos.hora_inicio);
       document.getElementById('cita-hora-fin').value = horaCorta(datos.hora_fin);
@@ -1651,6 +1682,26 @@
     api('/citas/' + id, { method: 'DELETE' })
       .then(function () { avisar('Cita cancelada.'); cerrarModalCita(); cargarBahias(); cargarCalendarioSemana(); })
       .catch(function (e2) { avisar(e2.message || 'No se pudo cancelar la cita.', true); });
+  };
+
+  document.getElementById('cita-no-llego').onclick = function (e) {
+    var btn = e.currentTarget;
+    if (btn.getAttribute('data-confirmar') !== '1') {
+      btn.setAttribute('data-confirmar', '1');
+      btn.textContent = '¿Seguro? Sí, no llegó';
+      clearTimeout(btn._t);
+      btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = 'Cliente no llegó'; }, 3000);
+      return;
+    }
+    var id = document.getElementById('cita-id').value;
+    api('/citas/' + id + '/no-show', { method: 'POST' })
+      .then(function () {
+        avisar('Marcado: el cliente no llegó.');
+        cerrarModalCita();
+        cargarBahias();
+        cargarCalendarioSemana();
+      })
+      .catch(function (e2) { avisar(e2.message || 'No se pudo marcar.', true); });
   };
 
   // ---------- Simulador de mantención ----------

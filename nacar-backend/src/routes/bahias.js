@@ -8,14 +8,16 @@ const router = express.Router();
 router.use(requireAuth);
 
 // "Ocupada ahora" ya NO es un estado propio de la bahía: se calcula en vivo a partir de
-// citas.js — la misma tabla "citas" que alimenta el calendario de abajo. Así, asignar un
-// auto "ahora" (walk-in, sin hora agendada) y una cita agendada que llega a su hora se ven
-// exactamente igual arriba: ambas son, para efectos de esta consulta, "la cita de hoy que
-// ya empezó y no ha terminado" en esa bahía (si hay más de una que califica, se toma la que
-// empezó más tarde). Esto es justo lo que antes NO se cruzaba con el calendario.
+// citas.js — la misma tabla "citas" que alimenta el calendario de abajo. Y, desde el
+// 28-oct-2026 (segunda ronda), ya NO depende de la hora agendada (hora_inicio <= ahora): una
+// bahía está "ocupada" si y solo si alguien confirmó manualmente el ingreso de un auto
+// (ingresado_en) y todavía no se liberó (hora_fin IS NULL) — sin importar qué hora tenía
+// agendada ni qué bahía había sugerido Andy al momento de agendar. Esto evita que una cita
+// agendada "se ocupe sola" antes de que el auto haya llegado de verdad, y permite que el
+// mecánico la ingrese en CUALQUIER bahía disponible, no solo en la sugerida.
 const SQL_OCUPACION_ACTUAL = `
   SELECT b.id, b.nombre, b.tipo, b.orden,
-         c.id AS cita_id, c.nota, c.atrasado, c.hora_inicio, c.hora_fin,
+         c.id AS cita_id, c.fecha, c.nota, c.atrasado, c.hora_inicio, c.hora_fin, c.ingresado_en,
          c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
          c.pastillas_tra_tipo, c.pastillas_tra_bloqueada,
          c.discos_del_rectificar, c.discos_tra_rectificar,
@@ -24,10 +26,8 @@ const SQL_OCUPACION_ACTUAL = `
   FROM bahias b
   LEFT JOIN LATERAL (
     SELECT * FROM citas c2
-    WHERE c2.bahia_id = b.id AND c2.fecha = CURRENT_DATE
-      AND c2.hora_inicio <= CURRENT_TIME
-      AND (c2.hora_fin IS NULL OR c2.hora_fin > CURRENT_TIME)
-    ORDER BY c2.hora_inicio DESC
+    WHERE c2.bahia_id = b.id AND c2.ingresado_en IS NOT NULL AND c2.hora_fin IS NULL
+    ORDER BY c2.ingresado_en DESC
     LIMIT 1
   ) c ON true
   LEFT JOIN vehiculos v ON v.id = c.vehiculo_id
@@ -48,8 +48,12 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/bahias/:id/asignar -> atajo rápido para un auto que llega SIN hora agendada
-// ("walk-in"): crea una cita de hoy, desde ahora, sin hora de término (queda abierta hasta
-// que se libere). Es, para todos los efectos, una cita más — aparece igual en el calendario.
+// ("walk-in"): crea una cita de hoy, ya ingresada desde ahora, sin hora de término (queda
+// abierta hasta que se libere). Es, para todos los efectos, una cita más — aparece igual en el
+// calendario. "Hoy" y "ahora" se calculan en hora de Chile explícitamente (en vez de
+// CURRENT_DATE/CURRENT_TIME, que dependen de en qué zona horaria esté configurado el servidor
+// de Postgres — en Railway suele ser UTC, lo que corría la fecha/hora casi 3 horas) — así un
+// walk-in a última hora de la noche queda fechado en el día correcto para el taller.
 router.post('/:id/asignar', async (req, res) => {
   const id = Number(req.params.id);
   const patente = String((req.body || {}).patente || '').trim().toUpperCase();
@@ -60,9 +64,8 @@ router.post('/:id/asignar', async (req, res) => {
     if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
 
     const ocupacion = await pool.query(
-      `SELECT id FROM citas WHERE bahia_id = $1 AND fecha = CURRENT_DATE
-         AND hora_inicio <= CURRENT_TIME AND (hora_fin IS NULL OR hora_fin > CURRENT_TIME)
-       ORDER BY hora_inicio DESC LIMIT 1`,
+      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND hora_fin IS NULL
+       ORDER BY ingresado_en DESC LIMIT 1`,
       [id]
     );
     if (ocupacion.rows[0]) {
@@ -77,8 +80,13 @@ router.post('/:id/asignar', async (req, res) => {
     }
 
     const r = await pool.query(
-      `INSERT INTO citas (bahia_id, vehiculo_id, fecha, hora_inicio, hora_fin, nota, creado_por)
-       VALUES ($1, $2, CURRENT_DATE, CURRENT_TIME, NULL, $3, $4) RETURNING id`,
+      `INSERT INTO citas (bahia_id, vehiculo_id, fecha, hora_inicio, hora_fin, ingresado_en, nota, creado_por)
+       VALUES (
+         $1, $2,
+         (now() AT TIME ZONE 'America/Santiago')::date,
+         (now() AT TIME ZONE 'America/Santiago')::time,
+         NULL, now(), $3, $4
+       ) RETURNING id`,
       [id, v.rows[0].id, nota || null, req.usuario ? req.usuario.id : null]
     );
     res.json({ ok: true, cita_id: r.rows[0].id });
@@ -90,17 +98,16 @@ router.post('/:id/asignar', async (req, res) => {
 });
 
 // POST /api/bahias/:id/liberar -> cierra la cita en curso en esa bahía (le pone hora de
-// término = ahora). No la borra: queda en el calendario de hoy como un bloque ya terminado,
-// con su historial de comentarios intacto.
+// término = ahora, en hora de Chile). No la borra: queda en el calendario de hoy como un
+// bloque ya terminado, con su historial de comentarios intacto.
 router.post('/:id/liberar', async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query(
-      `UPDATE citas SET hora_fin = CURRENT_TIME, actualizado_en = now()
+      `UPDATE citas SET hora_fin = (now() AT TIME ZONE 'America/Santiago')::time, actualizado_en = now()
        WHERE id = (
-         SELECT id FROM citas WHERE bahia_id = $1 AND fecha = CURRENT_DATE
-           AND hora_inicio <= CURRENT_TIME AND (hora_fin IS NULL OR hora_fin > CURRENT_TIME)
-         ORDER BY hora_inicio DESC LIMIT 1
+         SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND hora_fin IS NULL
+         ORDER BY ingresado_en DESC LIMIT 1
        )
        RETURNING id`,
       [id]

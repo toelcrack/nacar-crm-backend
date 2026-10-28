@@ -127,6 +127,14 @@ CREATE TABLE IF NOT EXISTS citas (
   hora_fin TIME,
   nota TEXT,
   atrasado BOOLEAN NOT NULL DEFAULT false,
+  -- Ingreso físico al elevador/patio (agregado 28-oct-2026, segunda ronda): bahia_id es solo la
+  -- SUGERENCIA de Andy al agendar — el ingreso real a una bahía siempre es una acción manual del
+  -- mecánico (ver POST /api/citas/:id/ingresar), marcada aquí. TIMESTAMPTZ para que "ahora" sea
+  -- el instante real sin depender de en qué zona horaria esté configurado el servidor.
+  ingresado_en TIMESTAMPTZ,
+  -- El cliente agendó pero nunca llegó — distinto de cancelar por error: el registro queda
+  -- (útil a futuro para medir inasistencia), solo deja de contar como "pendiente".
+  no_show BOOLEAN NOT NULL DEFAULT false,
   creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
   creado_por INTEGER REFERENCES usuarios(id),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -207,6 +215,19 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS tareas JSONB NOT NULL DEFAULT '[]'::j
 -- nullable, no hace nada).
 ALTER TABLE citas ALTER COLUMN bahia_id DROP NOT NULL;
 
--- Índice para encontrar rápido las citas de hoy que todavía no tienen elevador asignado
--- (la lista de "pendientes" que ve el mecánico en cada tarjeta de elevador disponible).
-CREATE INDEX IF NOT EXISTS idx_citas_pendientes ON citas (fecha) WHERE bahia_id IS NULL;
+-- Ingreso físico al elevador/patio, separado de la hora agendada (28-oct-2026, segunda ronda):
+-- se descubrió en producción que "pendiente = bahia_id IS NULL" no sirve, porque Andy a veces
+-- sí sugiere un elevador al agendar (o la cita es de antes de este cambio) y el auto de todas
+-- formas no ha entrado físicamente todavía — y porque el auto-ocupado por hora (hora_inicio <=
+-- ahora) podía marcar "Ocupada" sola antes de que el mecánico confirmara que el auto llegó, o
+-- no reflejar que terminó entrando en OTRA bahía porque la sugerida se liberó después. Ahora el
+-- ingreso SIEMPRE es una acción manual (columna ingresado_en arriba) y "pendiente" es
+-- "ingresado_en IS NULL", sin importar qué bahía sugirió Andy.
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS ingresado_en TIMESTAMPTZ;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS no_show BOOLEAN NOT NULL DEFAULT false;
+
+-- Índice de "pendientes": antes filtraba por bahia_id IS NULL. CREATE INDEX IF NOT EXISTS con
+-- el mismo nombre NO actualiza la condición de un índice que ya exista con otra — hay que
+-- dropearlo primero para que quede con la condición correcta.
+DROP INDEX IF EXISTS idx_citas_pendientes;
+CREATE INDEX IF NOT EXISTS idx_citas_pendientes ON citas (fecha) WHERE ingresado_en IS NULL AND NOT no_show;
