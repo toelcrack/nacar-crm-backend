@@ -113,9 +113,14 @@ CREATE TABLE IF NOT EXISTS bahias (
 -- problemas con el auto asignado a esa cita, sin perder la nota original del trabajo.
 -- No reemplaza "bahias" (que sigue siendo "quién está ahí ahora mismo" para autos sin cita
 -- previa) — es aditivo, así que no afecta nada de lo ya desplegado y probado.
+--
+-- bahia_id es NULLABLE (cambiado 28-oct-2026): Andy (asesor) agenda la cita con fecha/hora pero
+-- SIN elegir elevador — queda "pendiente" hasta que el mecánico la ingresa físicamente a un
+-- elevador/patio disponible (ver POST /api/citas/:id/ingresar en src/routes/citas.js). Antes
+-- bahia_id era obligatorio desde que se creaba la cita.
 CREATE TABLE IF NOT EXISTS citas (
   id SERIAL PRIMARY KEY,
-  bahia_id INTEGER NOT NULL REFERENCES bahias(id) ON DELETE CASCADE,
+  bahia_id INTEGER REFERENCES bahias(id) ON DELETE CASCADE,
   vehiculo_id INTEGER NOT NULL REFERENCES vehiculos(id) ON DELETE CASCADE,
   fecha DATE NOT NULL,
   hora_inicio TIME NOT NULL,
@@ -195,3 +200,13 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_tra_rectificar BOOLEAN NOT NUL
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS estado_general TEXT;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS nota_estado TEXT;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS tareas JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- bahia_id pasa a ser opcional (28-oct-2026): para una tabla "citas" que YA existe en
+-- producción con bahia_id NOT NULL, el ADD COLUMN de arriba no alcanza — hay que soltar
+-- explícitamente la restricción NOT NULL. Es seguro correrlo muchas veces (si ya está
+-- nullable, no hace nada).
+ALTER TABLE citas ALTER COLUMN bahia_id DROP NOT NULL;
+
+-- Índice para encontrar rápido las citas de hoy que todavía no tienen elevador asignado
+-- (la lista de "pendientes" que ve el mecánico en cada tarjeta de elevador disponible).
+CREATE INDEX IF NOT EXISTS idx_citas_pendientes ON citas (fecha) WHERE bahia_id IS NULL;

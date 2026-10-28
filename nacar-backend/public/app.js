@@ -641,10 +641,99 @@
     api('/bahias').then(function (lista) {
       cont.innerHTML = lista.map(renderBahiaCard).join('');
       lista.forEach(function (b) { ligarAccionesBahia(b); });
+      // Las tarjetas recién se acaban de recrear (nuevos <select> vacíos) — si las citas
+      // pendientes ya estaban cargadas de antes, hay que rellenarlas de nuevo ahora que los
+      // elementos existen en el DOM (si todavía no habían cargado, cargarCitasPendientes()
+      // de abajo las va a rellenar apenas lleguen).
+      actualizarSelectoresPendientes();
     }).catch(function (e) {
       cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar la agenda del taller.') + '</p>';
     });
+    cargarCitasPendientes();
   }
+
+  // ---------- Citas pendientes de elevador (agendadas por Andy, sin bahía todavía) ----------
+  var citasPendientesCache = [];
+
+  function cargarCitasPendientes() {
+    var cont = document.getElementById('lista-citas-pendientes');
+    api('/citas/pendientes').then(function (lista) {
+      citasPendientesCache = lista;
+      if (!lista.length) {
+        cont.innerHTML = '<p class="sin-mant">No hay citas pendientes de elevador por hoy.</p>';
+      } else {
+        cont.innerHTML = lista.map(renderCitaPendienteChip).join('');
+        cont.querySelectorAll('.cita-pendiente-chip').forEach(function (btn) {
+          btn.onclick = function () {
+            var c = citasPendientesCache.find(function (x) { return String(x.id) === btn.getAttribute('data-cita-id'); });
+            if (c) {
+              abrirModalCita('editar', {
+                id: c.id,
+                bahia_id: null,
+                hora_inicio: c.hora_inicio,
+                hora_fin: c.hora_fin,
+                nota: c.nota,
+                patente: c.patente,
+                marca: c.marca,
+                modelo: c.modelo,
+                cliente_nombre: c.cliente_nombre,
+                fecha: c.fecha,
+              });
+            }
+          };
+        });
+      }
+      actualizarSelectoresPendientes();
+    }).catch(function (e) {
+      cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudieron cargar las citas pendientes.') + '</p>';
+    });
+  }
+
+  // Rellena el selector "Entrar una cita pendiente de hoy" dentro de cada tarjeta de elevador
+  // disponible que ya esté en el DOM, con la lista de citas pendientes recién cargada.
+  function actualizarSelectoresPendientes() {
+    document.querySelectorAll('select[id^="bahia-pendiente-"]').forEach(function (sel) {
+      var valorPrevio = sel.value;
+      if (!citasPendientesCache.length) {
+        sel.innerHTML = '<option value="">No hay citas pendientes</option>';
+        return;
+      }
+      sel.innerHTML = '<option value="">Elegir cita pendiente...</option>' + citasPendientesCache.map(function (c) {
+        var etiqueta = horaCorta(c.hora_inicio) + ' — ' + c.patente + ' ' + (c.marca || '') + ' ' + (c.modelo || '');
+        return '<option value="' + c.id + '">' + escapeHtml(etiqueta.trim()) + '</option>';
+      }).join('');
+      if (valorPrevio && citasPendientesCache.some(function (c) { return String(c.id) === valorPrevio; })) {
+        sel.value = valorPrevio;
+      }
+    });
+  }
+
+  function ingresarCitaPendiente(bId) {
+    var sel = document.getElementById('bahia-pendiente-' + bId);
+    var citaId = sel ? sel.value : '';
+    if (!citaId) { avisar('Elige qué cita pendiente va a entrar.', true); return; }
+    api('/citas/' + citaId + '/ingresar', { method: 'POST', body: { bahia_id: bId } })
+      .then(function () {
+        avisar('Auto ingresado.');
+        cargarBahias();
+        cargarCalendarioSemana();
+      })
+      .catch(function (e) { avisar(e.message || 'No se pudo ingresar el vehículo.', true); });
+  }
+
+  function renderCitaPendienteChip(c) {
+    var notaTxt = c.nota ? ' · ' + escapeHtml(c.nota) : '';
+    return '<button type="button" class="cita-pendiente-chip" data-cita-id="' + c.id + '">' +
+      '<span class="cita-pendiente-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
+      '<span class="cita-pendiente-patente">' + escapeHtml(c.patente) + '</span>' +
+      '<span class="cita-pendiente-auto">' + escapeHtml(c.marca || '') + ' ' + escapeHtml(c.modelo || '') +
+        (c.cliente_nombre ? ' · ' + escapeHtml(c.cliente_nombre) : '') + notaTxt + '</span>' +
+    '</button>';
+  }
+
+  document.getElementById('btn-agendar-pendiente').onclick = function () {
+    abrirModalCita('nueva', { bahia_id: null, bahia_nombre: '', fecha: ymd(new Date()) });
+  };
 
   function renderBahiaCard(b) {
     var ocupada = !!b.vehiculo_id;
@@ -658,6 +747,13 @@
     if (!ocupada) {
       return '<div class="bahia-card" id="bahia-' + b.id + '">' + header +
         '<p class="bahia-disponible-txt">Sin auto asignado.</p>' +
+        '<div class="bahia-pendiente-wrap">' +
+          '<div class="campo"><label for="bahia-pendiente-' + b.id + '">Entrar una cita pendiente de hoy</label>' +
+            '<select id="bahia-pendiente-' + b.id + '"><option value="">Cargando...</option></select>' +
+          '</div>' +
+          '<div class="acciones-form"><button class="btn btn-primario" id="bahia-ingresar-' + b.id + '" type="button">Ingresar al ' + (b.tipo === 'patio' ? 'patio' : 'elevador') + '</button></div>' +
+        '</div>' +
+        '<p class="bahia-o-separador">— o asigna un auto directo, sin cita previa —</p>' +
         '<div class="campo"><label for="bahia-patente-' + b.id + '">Patente</label>' +
           '<input id="bahia-patente-' + b.id + '" list="bahia-dl-' + b.id + '" type="text" placeholder="AB1234" style="text-transform:uppercase" />' +
           '<datalist id="bahia-dl-' + b.id + '"></datalist>' +
@@ -665,7 +761,7 @@
         '<div class="campo"><label for="bahia-nota-nueva-' + b.id + '">Nota (opcional)</label>' +
           '<input id="bahia-nota-nueva-' + b.id + '" type="text" placeholder="Qué se le va a hacer" />' +
         '</div>' +
-        '<div class="acciones-form"><button class="btn btn-primario" id="bahia-asignar-' + b.id + '" type="button">Asignar</button></div>' +
+        '<div class="acciones-form"><button class="btn btn-secundario" id="bahia-asignar-' + b.id + '" type="button">Asignar</button></div>' +
       '</div>';
     }
 
@@ -698,6 +794,7 @@
         timerBahiaPatente[b.id] = setTimeout(function () { llenarDatalistBahia(b.id, inp.value.trim()); }, 300);
       });
       document.getElementById('bahia-asignar-' + b.id).onclick = function () { asignarBahia(b.id); };
+      document.getElementById('bahia-ingresar-' + b.id).onclick = function () { ingresarCitaPendiente(b.id); };
       return;
     }
     document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
@@ -821,8 +918,7 @@
           }).join('');
           html += '<div class="cal-celda' + (d.hoy ? ' hoy-col' : '') + '">' +
             chips +
-            '<button type="button" class="btn-cal-agregar" data-bahia-id="' + b.id + '" data-bahia-nombre="' +
-              escapeHtml(b.nombre) + '" data-fecha="' + d.key + '">+ Agendar</button>' +
+            '<button type="button" class="btn-cal-agregar" data-fecha="' + d.key + '">+ Agendar</button>' +
           '</div>';
         });
       });
@@ -836,11 +932,10 @@
       });
       cont.querySelectorAll('.btn-cal-agregar').forEach(function (btn) {
         btn.onclick = function () {
-          abrirModalCita('nueva', {
-            bahia_id: btn.getAttribute('data-bahia-id'),
-            bahia_nombre: btn.getAttribute('data-bahia-nombre'),
-            fecha: btn.getAttribute('data-fecha'),
-          });
+          // Desde el calendario tampoco se elige elevador (29-oct-2026, a pedido del usuario):
+          // la cita queda pendiente igual que con "+ Agendar" de arriba, solo que con la fecha
+          // de esta columna ya precargada.
+          abrirModalCita('nueva', { bahia_id: null, bahia_nombre: '', fecha: btn.getAttribute('data-fecha') });
         };
       });
     }).catch(function (e) {
@@ -1261,6 +1356,13 @@
     ventana.document.open();
     ventana.document.write(html);
     ventana.document.close();
+    // Si la cita todavía no tiene elevador asignado (quedó pendiente), no hay bahía que liberar.
+    if (!bahiaId) {
+      cerrarModalCita();
+      cargarCitasPendientes();
+      avisar('Informe generado.');
+      return;
+    }
     api('/bahias/' + bahiaId + '/liberar', { method: 'POST' }).then(function () {
       cerrarModalCita();
       cargarBahias();
@@ -1276,8 +1378,8 @@
     btnGuardarCita.disabled = false;
     btnGuardarCita.textContent = 'Guardar';
     document.getElementById('cita-id').value = modo === 'editar' ? datos.id : '';
-    document.getElementById('cita-bahia-id').value = datos.bahia_id;
-    document.getElementById('cita-bahia-nombre').value = datos.bahia_nombre || '';
+    document.getElementById('cita-bahia-id').value = datos.bahia_id || '';
+    document.getElementById('cita-bahia-nombre').value = datos.bahia_id ? (datos.bahia_nombre || '') : 'Pendiente (sin elevador asignado)';
     document.getElementById('modal-cita-titulo').textContent = modo === 'editar' ? 'Editar cita' : 'Nueva cita';
 
     var campoPatente = document.getElementById('cita-campo-patente');
@@ -1513,6 +1615,7 @@
         avisar(msg);
         cerrarModalCita();
         cargarCalendarioSemana();
+        cargarCitasPendientes();
       }).catch(function (e) {
         var mensajeError = e.message || 'No se pudo agendar la cita.';
         avisar(mensajeError, true);

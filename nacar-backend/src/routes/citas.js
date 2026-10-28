@@ -67,7 +67,7 @@ router.get('/', async (req, res) => {
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
        FROM citas c
-       JOIN bahias b ON b.id = c.bahia_id
+       LEFT JOIN bahias b ON b.id = c.bahia_id
        JOIN vehiculos v ON v.id = c.vehiculo_id
        LEFT JOIN clientes cl ON cl.id = v.cliente_id
        WHERE c.fecha BETWEEN $1 AND $2
@@ -82,7 +82,11 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/citas -> agenda un vehículo en una bahía, en una fecha y hora futura (o de hoy).
+// POST /api/citas -> agenda un vehículo, en una fecha y hora futura (o de hoy) — la bahía
+// (elevador/patio) es OPCIONAL: Andy (asesor) agenda sin elegir elevador, y la cita queda
+// "pendiente" hasta que el mecánico la ingresa a un elevador disponible (ver
+// POST /:id/ingresar más abajo). Si se manda bahia_id de todas formas (ej. agendando desde el
+// propio elevador), se respeta igual que antes.
 //
 // La patente puede ser de un vehículo YA registrado (como antes), o una patente nueva — en ese
 // caso, si vienen datos de marca/modelo/cliente en el mismo body, el vehículo (y su cliente,
@@ -95,14 +99,13 @@ router.get('/', async (req, res) => {
 // si el correo no está configurado o falla el envío.
 router.post('/', async (req, res) => {
   const body = req.body || {};
-  const bahiaId = Number(body.bahia_id);
+  const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
   const patente = String(body.patente || '').trim().toUpperCase();
   const fecha = String(body.fecha || '').trim();
   const horaInicio = String(body.hora_inicio || '').trim();
   const horaFin = String(body.hora_fin || '').trim();
   const nota = String(body.nota || '').trim();
 
-  if (!bahiaId) return res.status(400).json({ error: 'Falta indicar la bahía.' });
   if (!patente) return res.status(400).json({ error: 'Escribe la patente del vehículo.' });
   if (!esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
   if (!esHoraValida(horaInicio)) return res.status(400).json({ error: 'Falta o es inválida la hora de inicio.' });
@@ -111,8 +114,10 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
-    if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+    if (bahiaId) {
+      const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
+      if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+    }
 
     let vehiculoId;
     const v = await pool.query('SELECT id FROM vehiculos WHERE patente = $1', [patente]);
@@ -148,7 +153,7 @@ router.post('/', async (req, res) => {
         `SELECT v.patente, v.marca, v.modelo, b.nombre AS bahia_nombre,
                 COALESCE(cl.correo, v.cliente_correo) AS correo, COALESCE(cl.nombre, v.cliente_nombre) AS nombre
          FROM vehiculos v
-         JOIN bahias b ON b.id = $1
+         LEFT JOIN bahias b ON b.id = $1
          LEFT JOIN clientes cl ON cl.id = v.cliente_id
          WHERE v.id = $2`,
         [bahiaId, vehiculoId]
@@ -184,19 +189,87 @@ router.post('/', async (req, res) => {
   }
 });
 
+// GET /api/citas/pendientes -> citas de HOY que todavía no tienen elevador/patio asignado
+// (bahia_id IS NULL) — esta es la lista que ve el mecánico en el selector de cada tarjeta de
+// elevador "Disponible" para elegir qué auto agendado por Andy va a entrar ahí. Debe ir ANTES
+// de "GET /:id" para que Express no la confunda con un id.
+router.get('/pendientes', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT c.id, c.fecha, c.hora_inicio, c.hora_fin, c.nota,
+              v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
+              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
+       FROM citas c
+       JOIN vehiculos v ON v.id = c.vehiculo_id
+       LEFT JOIN clientes cl ON cl.id = v.cliente_id
+       WHERE c.bahia_id IS NULL AND c.fecha = CURRENT_DATE
+       ORDER BY c.hora_inicio ASC, c.id ASC`
+    );
+    res.json(r.rows);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudieron cargar las citas pendientes de elevador.' });
+  }
+});
+
+// POST /api/citas/:id/ingresar -> el mecánico toma una cita pendiente (agendada por Andy, sin
+// elevador) y la ingresa físicamente a una bahía (elevador o patio) disponible. Reusa el mismo
+// chequeo de ocupación que src/routes/bahias.js (POST /:id/asignar): si la bahía ya tiene un
+// auto ahora mismo, no se puede. Al ingresar se actualiza hora_inicio a AHORA, igual que un
+// walk-in — así queda "ocupada ahora" de inmediato en la vista de bahías, sin importar la hora
+// que Andy haya agendado originalmente.
+router.post('/:id/ingresar', async (req, res) => {
+  const id = Number(req.params.id);
+  const bahiaId = Number((req.body || {}).bahia_id);
+  if (!bahiaId) return res.status(400).json({ error: 'Falta indicar a qué elevador o patio ingresarlo.' });
+
+  try {
+    const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
+    if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+
+    const c = await pool.query('SELECT id, bahia_id, fecha FROM citas WHERE id = $1', [id]);
+    if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    if (c.rows[0].bahia_id) {
+      return res.status(409).json({ error: 'Esta cita ya tiene un elevador asignado.' });
+    }
+
+    const ocupacion = await pool.query(
+      `SELECT id FROM citas WHERE bahia_id = $1 AND fecha = CURRENT_DATE
+         AND hora_inicio <= CURRENT_TIME AND (hora_fin IS NULL OR hora_fin > CURRENT_TIME)
+       ORDER BY hora_inicio DESC LIMIT 1`,
+      [bahiaId]
+    );
+    if (ocupacion.rows[0]) {
+      return res.status(409).json({ error: 'Esta bahía ya está ocupada. Libérala primero.' });
+    }
+
+    await pool.query(
+      `UPDATE citas SET bahia_id = $1, fecha = CURRENT_DATE, hora_inicio = CURRENT_TIME,
+              actualizado_en = now()
+       WHERE id = $2`,
+      [bahiaId, id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo ingresar el vehículo al elevador.' });
+  }
+});
+
 // PUT /api/citas/:id -> edita fecha/hora/bahía/nota (el estado de atraso/problema ya NO se
 // toca aquí — se maneja posteando un comentario en el chat de la cita, ver más abajo).
 // No permite cambiar el vehículo: si se agendó con la patente equivocada, cancela y crea otra.
 router.put('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
-  const bahiaId = Number(body.bahia_id);
+  const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
   const fecha = String(body.fecha || '').trim();
   const horaInicio = String(body.hora_inicio || '').trim();
   const horaFin = String(body.hora_fin || '').trim();
   const nota = String(body.nota || '').trim();
 
-  if (!bahiaId) return res.status(400).json({ error: 'Falta indicar la bahía.' });
   if (!esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
   if (!esHoraValida(horaInicio)) return res.status(400).json({ error: 'Falta o es inválida la hora de inicio.' });
   if (horaFin && !esHoraValida(horaFin)) {
@@ -204,8 +277,10 @@ router.put('/:id', async (req, res) => {
   }
 
   try {
-    const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
-    if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+    if (bahiaId) {
+      const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
+      if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+    }
 
     const r = await pool.query(
       `UPDATE citas
@@ -287,7 +362,7 @@ router.get('/:id', async (req, res) => {
               v.patente, v.marca, v.modelo, v.anio, v.combustible,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
        FROM citas c
-       JOIN bahias b ON b.id = c.bahia_id
+       LEFT JOIN bahias b ON b.id = c.bahia_id
        JOIN vehiculos v ON v.id = c.vehiculo_id
        LEFT JOIN clientes cl ON cl.id = v.cliente_id
        WHERE c.id = $1`,
