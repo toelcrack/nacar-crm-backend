@@ -899,7 +899,7 @@
           }).join('');
           html += '<div class="cal-celda' + (d.hoy ? ' hoy-col' : '') + '">' +
             chips +
-            '<button type="button" class="btn-cal-agregar" data-fecha="' + d.key + '">+ Agendar</button>' +
+            '<button type="button" class="btn-cal-agregar" data-fecha="' + d.key + '" data-bahia-id="' + b.id + '" data-bahia-nombre="' + escapeHtml(b.nombre) + '">+ Agendar</button>' +
           '</div>';
         });
       });
@@ -913,10 +913,15 @@
       });
       cont.querySelectorAll('.btn-cal-agregar').forEach(function (btn) {
         btn.onclick = function () {
-          // Desde el calendario tampoco se elige elevador (29-oct-2026, a pedido del usuario):
-          // la cita queda pendiente igual que con "+ Agendar" de arriba, solo que con la fecha
-          // de esta columna ya precargada.
-          abrirModalCita('nueva', { bahia_id: null, bahia_nombre: '', fecha: btn.getAttribute('data-fecha') });
+          // La bahía de esta columna queda como SUGERENCIA (igual que agendar con elevador
+          // elegido siempre funcionó) — así la cita aparece de inmediato en esta misma columna
+          // del calendario, donde se puede editar/cancelar. El ingreso real a la bahía sigue
+          // siendo siempre una acción manual del mecánico, nunca automático por esto.
+          abrirModalCita('nueva', {
+            bahia_id: btn.getAttribute('data-bahia-id'),
+            bahia_nombre: btn.getAttribute('data-bahia-nombre'),
+            fecha: btn.getAttribute('data-fecha'),
+          });
         };
       });
     }).catch(function (e) {
@@ -1430,9 +1435,19 @@
       document.getElementById('cita-chat-mensaje').value = '';
       document.getElementById('cita-chat-atrasado').checked = false;
       cargarComentariosCita(datos.id);
-      tallerHint.hidden = true;
-      tallerWrap.hidden = false;
-      cargarEstadoTaller(datos.id);
+      // "Estado del auto" (frenos, checklist, fotos) solo tiene sentido cuando el auto ya
+      // entró físicamente al elevador/patio — en la agenda (lo que arma Andy) solo se dice a
+      // qué viene, el mecánico recién completa el estado una vez que el auto está ahí.
+      if (datos.ingresado_en) {
+        tallerHint.hidden = true;
+        tallerWrap.hidden = false;
+        cargarEstadoTaller(datos.id);
+      } else {
+        tallerWrap.hidden = true;
+        tallerHint.hidden = false;
+        tallerEstado = null;
+        tallerVehiculo = null;
+      }
     }
     modal.hidden = false;
   }

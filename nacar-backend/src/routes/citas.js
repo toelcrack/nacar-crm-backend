@@ -416,11 +416,22 @@ router.get('/:id', async (req, res) => {
 // frenos/discos, el kilometraje, el estado general y el checklist de tareas (con diagnóstico y
 // fotos). Cualquier usuario logueado puede guardar — es trabajo del día a día del taller, igual
 // que el resto de "citas"/"bahías" (ver nota al inicio del archivo).
+//
+// Solo se puede completar mientras el auto está físicamente en un elevador/patio (ingresado_en
+// seteado) — en la agenda (lo que arma Andy) solo se especifica a qué viene, el estado real del
+// auto lo completa el mecánico una vez que lo tiene ahí. La UI ya oculta esta sección mientras
+// la cita está pendiente, pero el chequeo se repite acá como resguardo.
 router.patch('/:id/estado-taller', async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
   const tareas = Array.isArray(body.tareas) ? body.tareas : [];
   try {
+    const c = await pool.query('SELECT ingresado_en FROM citas WHERE id = $1', [id]);
+    if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    if (!c.rows[0].ingresado_en) {
+      return res.status(409).json({ error: 'El auto todavía no entró al elevador o patio — el estado se completa recién ahí.' });
+    }
+
     const r = await pool.query(
       `UPDATE citas SET
          kilometraje = $1, pastillas_del = $2, pastillas_tra = $3, discos_del = $4, discos_tra = $5,
