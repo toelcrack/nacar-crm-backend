@@ -996,22 +996,25 @@
   function renderFrenosTaller() {
     var frenosSolicitados = (tallerEstado.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
     if (!frenosSolicitados) return '';
-    var nombreTrasero = tallerEstado.pastillasTraTipo === 'tambor' ? 'Balatas traseras' : 'Pastillas traseras';
+    var esTambor = tallerEstado.pastillasTraTipo === 'tambor';
+    var nombreTrasero = esTambor ? 'Balatas traseras' : 'Pastillas traseras';
+    // El segundo bloque trasero es "Discos traseros" con pastillas, o "Tambor trasero" con
+    // balatas — en ambos casos se puede poner el % de vida útil normalmente (29-oct-2026,
+    // corregido a pedido del usuario: antes, elegir "Balatas/tambor" bloqueaba por defecto el
+    // % de ambos campos traseros y había que desbloquearlo aparte — ahora siempre se puede).
+    var nombreDiscoTambor = esTambor ? 'Tambor trasero' : 'Discos traseros';
     var html = '<p class="campo-label-suelto">Estado de frenos</p>';
     html += renderBloqueFreno('taller-pastillas-del', 'taller-del-pct', 'taller-del-label', 'Pastillas delanteras', tallerEstado.pastillasDel, false, '', 'pastillasDel');
     html += renderBloqueFreno('taller-discos-del', 'taller-disco-del-pct', 'taller-disco-del-label', 'Discos delanteros', tallerEstado.discosDel, false, tallerEstado.discosDelRectificar ? 'Se rectifica (no se cambia)' : '', 'discosDel');
     html += renderBotonRectificar('del', tallerEstado.discosDelRectificar);
     html += '<p class="campo-label-suelto" style="margin-top:12px">Tipo de freno trasero</p>' +
       '<div class="toggle-grupo">' +
-        '<button type="button" class="toggle-opt' + (tallerEstado.pastillasTraTipo !== 'tambor' ? ' activo' : '') + '" data-tipo-tra="pastillas">Pastillas traseras</button>' +
-        '<button type="button" class="toggle-opt' + (tallerEstado.pastillasTraTipo === 'tambor' ? ' activo' : '') + '" data-tipo-tra="tambor">Balatas / tambor</button>' +
+        '<button type="button" class="toggle-opt' + (!esTambor ? ' activo' : '') + '" data-tipo-tra="pastillas">Pastillas traseras</button>' +
+        '<button type="button" class="toggle-opt' + (esTambor ? ' activo' : '') + '" data-tipo-tra="tambor">Balatas / tambor</button>' +
       '</div>';
-    html += renderBloqueFreno('taller-pastillas-tra', 'taller-tra-pct', 'taller-tra-label', nombreTrasero, tallerEstado.pastillasTra, tallerEstado.pastillasTraBloqueada, '', 'pastillasTra');
-    html += renderBloqueFreno('taller-discos-tra', 'taller-disco-tra-pct', 'taller-disco-tra-label', 'Discos traseros', tallerEstado.discosTra, tallerEstado.pastillasTraBloqueada, tallerEstado.discosTraRectificar ? 'Se rectifica (no se cambia)' : '', 'discosTra');
-    if (!tallerEstado.pastillasTraBloqueada) html += renderBotonRectificar('tra', tallerEstado.discosTraRectificar);
-    if (tallerEstado.pastillasTraTipo === 'tambor') {
-      html += '<button type="button" class="btn-texto" data-toggle-bloqueo-tra="1">' + (tallerEstado.pastillasTraBloqueada ? 'Desbloquear % trasero' : 'Bloquear') + '</button>';
-    }
+    html += renderBloqueFreno('taller-pastillas-tra', 'taller-tra-pct', 'taller-tra-label', nombreTrasero, tallerEstado.pastillasTra, false, '', 'pastillasTra');
+    html += renderBloqueFreno('taller-discos-tra', 'taller-disco-tra-pct', 'taller-disco-tra-label', nombreDiscoTambor, tallerEstado.discosTra, false, tallerEstado.discosTraRectificar ? 'Se rectifica (no se cambia)' : '', 'discosTra');
+    html += renderBotonRectificar('tra', tallerEstado.discosTraRectificar);
     return html;
   }
 
@@ -1096,12 +1099,8 @@
     document.querySelectorAll('#taller-frenos-wrap [data-tipo-tra]').forEach(function (b) {
       b.onclick = function () {
         tallerEstado.pastillasTraTipo = b.getAttribute('data-tipo-tra');
-        tallerEstado.pastillasTraBloqueada = (tallerEstado.pastillasTraTipo === 'tambor');
         guardarEstadoTaller(true);
       };
-    });
-    document.querySelectorAll('#taller-frenos-wrap [data-toggle-bloqueo-tra]').forEach(function (b) {
-      b.onclick = function () { tallerEstado.pastillasTraBloqueada = !tallerEstado.pastillasTraBloqueada; guardarEstadoTaller(true); };
     });
     document.querySelectorAll('#taller-frenos-wrap [data-toggle-rectificar]').forEach(function (b) {
       b.onclick = function () {
@@ -1256,8 +1255,8 @@
     var filasFrenos = !hayFrenos ? '' :
       filaFreno('Pastillas de freno delanteras', b.pastillasDel, false) +
       filaFreno('Discos de freno delanteros', b.discosDel, false, b.discosDelRectificar) +
-      filaFreno(nombreTrasero, b.pastillasTra, b.pastillasTraBloqueada) +
-      filaFreno(nombreDiscosTrasero, b.discosTra, b.pastillasTraBloqueada, b.discosTraRectificar);
+      filaFreno(nombreTrasero, b.pastillasTra, false) +
+      filaFreno(nombreDiscosTrasero, b.discosTra, false, b.discosTraRectificar);
 
     var filasTareas = (b.tareas || []).map(function (t) {
       var estadoTxt = (t.estado === 'realizado' ? 'Realizado' : 'Pendiente') + (t.visibilidad === 'cliente' ? ' · Visible al cliente' : '');
@@ -1271,8 +1270,8 @@
       if (b.discosDel !== '') observaciones.push(b.discosDelRectificar
         ? 'Discos de freno delanteros en ' + b.discosDel + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : 'Discos de freno delanteros en ' + b.discosDel + '% de vida útil restante (' + labelPastillaPct(b.discosDel).toLowerCase() + ').');
-      if (b.pastillasTra !== '' && !b.pastillasTraBloqueada) observaciones.push(nombreTrasero + ' en ' + b.pastillasTra + '% de vida útil restante (' + labelPastillaPct(b.pastillasTra).toLowerCase() + ').');
-      if (b.discosTra !== '' && !b.pastillasTraBloqueada) observaciones.push(b.discosTraRectificar
+      if (b.pastillasTra !== '') observaciones.push(nombreTrasero + ' en ' + b.pastillasTra + '% de vida útil restante (' + labelPastillaPct(b.pastillasTra).toLowerCase() + ').');
+      if (b.discosTra !== '') observaciones.push(b.discosTraRectificar
         ? nombreDiscosTrasero + ' en ' + b.discosTra + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : nombreDiscosTrasero + ' en ' + b.discosTra + '% de vida útil restante (' + labelPastillaPct(b.discosTra).toLowerCase() + ').');
     }
