@@ -959,23 +959,23 @@
   var TAREAS_DIAGNOSTICO = ['Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero'];
   function requiereDiagnostico(nombre) { return TAREAS_DIAGNOSTICO.indexOf(nombre) !== -1; }
 
+  // Escala de 4 tramos (28-oct-2026, segunda ronda): <40% Cambiar ahora, 40-49% Revisar
+  // pronto, 50-69% Buen estado, 70%+ Muy buen estado. Se usa tanto en el label bajo cada
+  // slider del editor como en la columna "Estado" del informe impreso (vía filaFreno), para
+  // que ambas vistas siempre muestren la misma palabra para el mismo %.
   function labelPastillaPct(pct) {
     if (pct === '' || pct === null || pct === undefined) return 'Sin registrar';
     pct = Number(pct);
-    if (pct >= 20) return 'Muy buen estado';
+    if (pct >= 70) return 'Muy buen estado';
+    if (pct >= 50) return 'Buen estado';
+    if (pct >= 40) return 'Revisar pronto';
     return 'Cambiar ahora';
   }
   function claseChipPct(pct) {
     if (pct === '' || pct === null || pct === undefined) return '';
     pct = Number(pct);
-    if (pct >= 20) return '';
+    if (pct >= 40) return '';
     return 'chip-problema';
-  }
-  function rcmDePct(pct) {
-    if (pct === '' || pct === null || pct === undefined) return '';
-    pct = Number(pct);
-    if (pct >= 20) return 'M';
-    return 'C';
   }
 
   function renderBloqueFreno(inputId, pctId, labelId, titulo, valor, bloqueado, labelOverride, campo) {
@@ -1286,13 +1286,13 @@
     var nombreTrasero = b.pastillasTraTipo === 'tambor' ? 'Balatas de freno traseras' : 'Pastillas de freno traseras';
     var nombreDiscosTrasero = b.pastillasTraTipo === 'tambor' ? 'Discos/tambores traseros' : 'Discos de freno traseros';
 
-    var PALABRA_RCM = { C: 'Cambiar', M: 'Mantener' };
     function filaFreno(nombre, pct, bloqueada, rectificar, sensor, reemplazar) {
       var estadoTxt;
       if (bloqueada) estadoTxt = '—';
       else if (rectificar) estadoTxt = 'Rectificar';
       else if (reemplazar) estadoTxt = 'Cambiar';
-      else estadoTxt = PALABRA_RCM[rcmDePct(pct)] || '—';
+      else if (pct === '' || pct === null || pct === undefined) estadoTxt = '—';
+      else estadoTxt = labelPastillaPct(pct);
       var pctTxt = bloqueada ? '—' : ((pct === '' || pct === null || pct === undefined) ? '—' : (pct + '%'));
       var nombreTxt = nombre + (sensor ? ' (con sensor)' : '');
       return '<tr><td>' + escapeHtml(nombreTxt) + '</td><td class="celda-pct">' + pctTxt + '</td><td class="celda-estado-freno">' + escapeHtml(estadoTxt) + '</td></tr>';
