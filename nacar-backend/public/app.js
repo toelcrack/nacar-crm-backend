@@ -663,41 +663,17 @@
   }
 
   // ---------- Citas pendientes de elevador (agendadas por Andy, sin bahía todavía) ----------
+  // Ya no se muestran como una lista aparte (sobraba: cada tarjeta de elevador/patio
+  // disponible ya tiene su propio selector "Entrar una cita pendiente de hoy") — esta función
+  // solo mantiene el cache que alimenta esos selectores.
   var citasPendientesCache = [];
 
   function cargarCitasPendientes() {
-    var cont = document.getElementById('lista-citas-pendientes');
     api('/citas/pendientes').then(function (lista) {
       citasPendientesCache = lista;
-      if (!lista.length) {
-        cont.innerHTML = '<p class="sin-mant">No hay citas pendientes de elevador por hoy.</p>';
-      } else {
-        cont.innerHTML = lista.map(renderCitaPendienteChip).join('');
-        cont.querySelectorAll('.cita-pendiente-chip').forEach(function (btn) {
-          btn.onclick = function () {
-            var c = citasPendientesCache.find(function (x) { return String(x.id) === btn.getAttribute('data-cita-id'); });
-            if (c) {
-              abrirModalCita('editar', {
-                id: c.id,
-                bahia_id: c.bahia_id,
-                bahia_nombre: c.bahia_sugerida,
-                ingresado_en: null,
-                hora_inicio: c.hora_inicio,
-                hora_fin: c.hora_fin,
-                nota: c.nota,
-                patente: c.patente,
-                marca: c.marca,
-                modelo: c.modelo,
-                cliente_nombre: c.cliente_nombre,
-                fecha: c.fecha,
-              });
-            }
-          };
-        });
-      }
       actualizarSelectoresPendientes();
-    }).catch(function (e) {
-      cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudieron cargar las citas pendientes.') + '</p>';
+    }).catch(function () {
+      citasPendientesCache = [];
     });
   }
 
@@ -733,21 +709,6 @@
       })
       .catch(function (e) { avisar(e.message || 'No se pudo ingresar el vehículo.', true); });
   }
-
-  function renderCitaPendienteChip(c) {
-    var notaTxt = c.nota ? ' · ' + escapeHtml(c.nota) : '';
-    var sugeridaTxt = c.bahia_sugerida ? ' · sugerido: ' + escapeHtml(c.bahia_sugerida) : '';
-    return '<button type="button" class="cita-pendiente-chip" data-cita-id="' + c.id + '">' +
-      '<span class="cita-pendiente-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
-      '<span class="cita-pendiente-patente">' + escapeHtml(c.patente) + '</span>' +
-      '<span class="cita-pendiente-auto">' + escapeHtml(c.marca || '') + ' ' + escapeHtml(c.modelo || '') +
-        (c.cliente_nombre ? ' · ' + escapeHtml(c.cliente_nombre) : '') + notaTxt + sugeridaTxt + '</span>' +
-    '</button>';
-  }
-
-  document.getElementById('btn-agendar-pendiente').onclick = function () {
-    abrirModalCita('nueva', { bahia_id: null, bahia_nombre: '', fecha: ymd(new Date()) });
-  };
 
   function renderBahiaCard(b) {
     var ocupada = !!b.vehiculo_id;
