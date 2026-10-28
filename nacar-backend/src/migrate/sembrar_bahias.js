@@ -7,7 +7,7 @@ const { pool } = require('../db');
 const BAHIAS = [
   { nombre: 'Elevador 1', tipo: 'elevador', orden: 1 },
   { nombre: 'Elevador 2', tipo: 'elevador', orden: 2 },
-  { nombre: 'Elevador 3', tipo: 'elevador', orden: 3 },
+  { nombre: 'Alineadora', tipo: 'elevador', orden: 3 },
   { nombre: 'Patio', tipo: 'patio', orden: 4 },
 ];
 
