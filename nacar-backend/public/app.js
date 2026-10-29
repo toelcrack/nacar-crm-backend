@@ -963,18 +963,21 @@
   // pronto, 50-69% Buen estado, 70%+ Muy buen estado. Se usa tanto en el label bajo cada
   // slider del editor como en la columna "Estado" del informe impreso (vía filaFreno), para
   // que ambas vistas siempre muestren la misma palabra para el mismo %.
+  // Escala de 5 tramos (29-oct-2026, tercera ronda): <20% Cambiar ahora, 20-39% Revisar
+  // pronto, 40-59% Mitad de vida, 60-69% Buen estado, 70%+ Muy buen estado.
   function labelPastillaPct(pct) {
     if (pct === '' || pct === null || pct === undefined) return 'Sin registrar';
     pct = Number(pct);
     if (pct >= 70) return 'Muy buen estado';
-    if (pct >= 50) return 'Buen estado';
-    if (pct >= 40) return 'Revisar pronto';
+    if (pct >= 60) return 'Buen estado';
+    if (pct >= 40) return 'Mitad de vida';
+    if (pct >= 20) return 'Revisar pronto';
     return 'Cambiar ahora';
   }
   function claseChipPct(pct) {
     if (pct === '' || pct === null || pct === undefined) return '';
     pct = Number(pct);
-    if (pct >= 40) return '';
+    if (pct >= 20) return '';
     return 'chip-problema';
   }
 
