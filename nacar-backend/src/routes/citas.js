@@ -227,7 +227,9 @@ router.get('/pendientes', async (req, res) => {
 // Reusa el mismo chequeo de ocupación que src/routes/bahias.js (POST /:id/asignar): si la bahía
 // ya tiene un auto adentro ahora mismo, no se puede. "Ocupada" ya NO depende de la hora
 // agendada — depende solo de que alguien haya confirmado el ingreso (ingresado_en) y todavía no
-// se haya liberado (hora_fin IS NULL). La fecha/hora originalmente agendada por Andy se deja
+// se haya liberado (salida_en IS NULL — NO hora_fin, que es solo la hora agendada; usarla acá
+// dejaba bloqueada una bahía ya liberada si antes había tenido un auto "directo" sin hora de
+// término, bug corregido 30-oct-2026). La fecha/hora originalmente agendada por Andy se deja
 // intacta (sirve de registro); ingresado_en guarda el momento real de entrada.
 router.post('/:id/ingresar', async (req, res) => {
   const id = Number(req.params.id);
@@ -248,7 +250,7 @@ router.post('/:id/ingresar', async (req, res) => {
     }
 
     const ocupacion = await pool.query(
-      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND hora_fin IS NULL
+      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND salida_en IS NULL
        ORDER BY ingresado_en DESC LIMIT 1`,
       [bahiaId]
     );
