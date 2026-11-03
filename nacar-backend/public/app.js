@@ -1619,7 +1619,7 @@
       '🚗 ' + auto + ' (' + c.patente + ')\n' +
       '📅 ' + fechaTxt + ', ' + horaCorta(c.hora_inicio) + ' hrs\n' +
       (c.nota ? '🔧 ' + c.nota + '\n' : '') +
-      '\n¿Puedes venir? Confírmanos aquí 👇\n' + location.origin + '/c/' + c.token_confirmacion;
+      '\n¿Puedes venir? Confírmanos aquí 👇\n' + 'https://agenda.tallernacarautomotriz.cl/c/' + c.token_confirmacion;
   }
 
   function pintarWhatsappCita() {
