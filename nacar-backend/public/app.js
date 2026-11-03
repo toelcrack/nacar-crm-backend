@@ -1994,6 +1994,7 @@
             '<div class="campo"><label for="sim-reg-cliente">Nombre cliente (opcional)</label><input id="sim-reg-cliente" type="text" placeholder="Juan Pérez" /></div>' +
             '<div class="campo"><label for="sim-reg-correo">Correo (opcional)</label><input id="sim-reg-correo" type="email" placeholder="juan@correo.com" /></div>' +
           '</div>' +
+          '<div class="campo"><label for="sim-reg-telefono">WhatsApp (opcional)</label><input id="sim-reg-telefono" type="tel" placeholder="+56 9 1234 5678" /></div>' +
           '<div class="acciones-form"><button class="btn btn-primario" id="btn-sim-registrar" type="button">Registrar este vehículo en el taller</button></div>'
         );
     cont.innerHTML =
@@ -2040,6 +2041,7 @@
       vin: v.vin || '',
       clienteNombre: elCliente ? elCliente.value.trim() : '',
       clienteCorreo: elCorreo ? elCorreo.value.trim() : '',
+      clienteTelefono: document.getElementById('sim-reg-telefono') ? document.getElementById('sim-reg-telefono').value.trim() : '',
     };
     api('/vehiculos', { method: 'POST', body: body }).then(function () {
       avisar('Vehículo registrado en el taller.');

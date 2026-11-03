@@ -40,6 +40,27 @@ async function resolverClienteId({ clienteId, clienteNombre, clienteCorreo, clie
     }
   }
 
+  // Sin correo: reusar al cliente si el teléfono ya está registrado, o si hay exactamente UN
+  // cliente con ese mismo nombre — así un cliente con dos autos no queda duplicado (y su
+  // teléfono se lee del cliente existente en vez de pedirlo de nuevo). Solo al crear/asignar,
+  // nunca al corregir los datos de un vehículo existente (clienteIdActual).
+  if (!clienteIdActual) {
+    let existente = null;
+    if (telefono) {
+      const t = await pool.query('SELECT id FROM clientes WHERE telefono = $1 ORDER BY id LIMIT 2', [telefono]);
+      if (t.rows.length === 1) existente = t.rows[0].id;
+    }
+    if (!existente && nombre && !correo) {
+      const n = await pool.query('SELECT id FROM clientes WHERE LOWER(TRIM(nombre)) = LOWER($1) LIMIT 2', [nombre]);
+      if (n.rows.length === 1) existente = n.rows[0].id;
+    }
+    if (existente) {
+      if (telefono) await pool.query('UPDATE clientes SET telefono = $1, actualizado_en = now() WHERE id = $2', [telefono, existente]);
+      if (correo) await pool.query('UPDATE clientes SET correo = COALESCE(correo, $1) WHERE id = $2', [correo, existente]);
+      return existente;
+    }
+  }
+
   if (clienteIdActual) {
     await pool.query(
       'UPDATE clientes SET nombre = $1, correo = $2, telefono = $3, actualizado_en = now() WHERE id = $4',
