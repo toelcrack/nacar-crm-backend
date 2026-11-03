@@ -37,7 +37,13 @@ app.use('/c', confirmarRoutes);
 
 app.get('/api/salud', (req, res) => res.json({ ok: true }));
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// app.js e index.html siempre se revalidan (no-cache): así, cuando se publica un cambio, el equipo
+// lo ve de inmediato en vez de seguir con una copia vieja guardada en el navegador.
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  setHeaders(res, file) {
+    if (/\.(js|html)$/.test(file)) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
