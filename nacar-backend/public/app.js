@@ -748,7 +748,8 @@
       ? '<span class="bahia-estado-chip atrasado-chip">⚠️ Atraso / problema</span>' : '';
 
     return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '">' + header +
-      '<div class="patente-badge">' + escapeHtml(b.patente) + '</div>' +
+      '<button type="button" class="patente-badge patente-orden" id="bahia-orden-' + b.id + '" title="Ver orden de trabajo (PDF)">' + escapeHtml(b.patente) + '</button>' +
+      '<div class="bahia-orden-hint">Toca la patente para ver la orden de trabajo</div>' +
       atrasadoHtml +
       '<div class="bahia-auto">' + autoLinea + '</div>' +
       (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
@@ -772,6 +773,7 @@
       document.getElementById('bahia-ingresar-' + b.id).onclick = function () { ingresarCitaPendiente(b.id); };
       return;
     }
+    document.getElementById('bahia-orden-' + b.id).onclick = function () { abrirOrdenTrabajo(b.cita_id); };
     document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
     document.getElementById('bahia-detalle-' + b.id).onclick = function () {
       abrirModalCita('editar', {
@@ -1406,6 +1408,95 @@
       avisar('Informe generado — la bahía queda disponible.');
     }).catch(function (e) { avisar(e.message || 'No se pudo liberar la bahía.', true); });
   };
+
+  // ---------- Orden de trabajo (3-nov-2026) ----------
+  // Los mecánicos tocan la patente de un elevador ocupado y ven la orden de trabajo del auto
+  // (qué se le va a hacer, trabajos pedidos, avisos del chat) lista para imprimir o guardar como
+  // PDF — misma mecánica que el informe de "Estado del auto": una ventana con el HTML y un botón
+  // "Imprimir / Guardar como PDF". La ventana se abre ANTES de pedir los datos (dentro del clic)
+  // porque los navegadores bloquean ventanas que se abren después de una espera.
+  function construirOrdenTrabajoHtml(c, comentarios) {
+    var logoEl = document.getElementById('logo-header');
+    var logoSrc = logoEl ? logoEl.src : '';
+    var combustible = c.combustible === 'diesel' ? 'Petróleo (diésel)' : 'Bencina';
+    var d = c.ingresado_en ? new Date(c.ingresado_en) : new Date();
+    function pad(n) { return String(n).padStart(2, '0'); }
+    var fechaTxt = pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+    var horaTxt = horaDeTimestamp(c.ingresado_en || d.toISOString());
+    var tareas = Array.isArray(c.tareas) ? c.tareas : [];
+
+    var filasTareas = tareas.map(function (t) {
+      var hecho = t.estado === 'realizado';
+      var diag = t.diagnostico ? '<div class="sub">' + escapeHtml(t.diagnostico) + '</div>' : '';
+      return '<tr><td class="chk">' + (hecho ? '☑' : '☐') + '</td><td>' + escapeHtml(t.nombre) + diag + '</td></tr>';
+    }).join('');
+
+    var avisos = (comentarios || []).map(function (m) {
+      return '<li>' + (m.atrasado ? '⚠️ ' : '') + escapeHtml(m.mensaje) +
+        ' <span class="sub">— ' + escapeHtml(m.autor_nombre || '') + ' ' + horaDeTimestamp(m.creado_en) + '</span></li>';
+    }).join('');
+
+    var lineasEnBlanco = '<div class="linea"></div><div class="linea"></div><div class="linea"></div><div class="linea"></div>';
+
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Orden de trabajo ' + escapeHtml(c.patente) + '</title><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;color:#141413;margin:40px;font-size:13px;}' +
+      'h1{font-size:22px;margin:0 0 4px;}' +
+      '.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:20px;}' +
+      '.marca-taller{text-align:right;font-size:12px;line-height:1.5;white-space:nowrap;}' +
+      '.marca-taller img{height:46px;margin-bottom:6px;}' +
+      '.marca-taller strong{font-size:14px;display:block;}' +
+      '.patente-grande{font-size:34px;font-weight:700;letter-spacing:0.06em;border:3px solid #141413;border-radius:8px;display:inline-block;padding:4px 18px;margin:6px 0 4px;}' +
+      'table{border-collapse:collapse;width:100%;margin-bottom:16px;font-size:12px;}' +
+      'td,th{border:1px solid #333;padding:6px 8px;text-align:left;}' +
+      'td.chk{width:34px;text-align:center;font-size:18px;}' +
+      '.sub{font-size:11px;color:#555;}' +
+      '.caja{border:1px solid #333;padding:12px 16px;margin-bottom:16px;}' +
+      '.caja h3{margin:0 0 8px;font-size:13px;}' +
+      '.caja ul{margin:0;padding-left:20px;}' +
+      '.linea{border-bottom:1px solid #999;height:26px;}' +
+      '.acciones-no-print{margin-top:24px;}' +
+      '.acciones-no-print button{font-family:inherit;font-size:14px;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;background:#D9642E;color:#fff;}' +
+      '@media print{ .acciones-no-print{display:none;} body{margin:20px;} }' +
+    '</style></head><body>' +
+      '<div class="top">' +
+        '<div><h1>ORDEN DE TRABAJO</h1><div class="patente-grande">' + escapeHtml(c.patente) + '</div>' +
+          '<div>' + escapeHtml((c.marca || '') + ' ' + (c.modelo || '') + (c.anio ? ' · ' + c.anio : '')) + '</div></div>' +
+        '<div class="marca-taller">' +
+          (logoSrc ? '<img src="' + logoSrc + '" alt="Nácar">' : '') +
+          '<strong>NACAR AUTOMOTRIZ</strong>' +
+          'Camino San Alberto Hurtado 1630, Padre Hurtado<br>+56 9 8183 6269<br>tallernacarautomotriz.cl' +
+        '</div>' +
+      '</div>' +
+      '<table>' +
+        '<tr><td><strong>CLIENTE:</strong> ' + escapeHtml(c.cliente_nombre || '—') + '</td><td><strong>COMBUSTIBLE:</strong> ' + escapeHtml(combustible) + '</td></tr>' +
+        '<tr><td><strong>UBICACIÓN:</strong> ' + escapeHtml(c.bahia_nombre || '—') + '</td><td><strong>INGRESO:</strong> ' + fechaTxt + ' ' + horaTxt + '</td></tr>' +
+        '<tr><td colspan="2"><strong>KILOMETRAJE:</strong> ' + escapeHtml(c.kilometraje || '—') + '</td></tr>' +
+      '</table>' +
+      '<div class="caja"><h3>QUÉ SE LE VA A HACER</h3>' + (c.nota ? escapeHtml(c.nota) : '<span class="sub">Sin descripción — consultar con el asesor.</span>') + '</div>' +
+      (filasTareas ? '<table><tr><th colspan="2">TRABAJOS A REALIZAR</th></tr>' + filasTareas + '</table>' : '') +
+      (avisos ? '<div class="caja"><h3>AVISOS Y COMENTARIOS</h3><ul>' + avisos + '</ul></div>' : '') +
+      '<div class="caja"><h3>OBSERVACIONES DEL MECÁNICO</h3>' + lineasEnBlanco + '</div>' +
+      '<div class="acciones-no-print"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' +
+    '</body></html>';
+  }
+
+  function abrirOrdenTrabajo(citaId) {
+    if (!citaId) { avisar('No se encontró la cita de este auto.', true); return; }
+    var ventana = window.open('', '_blank');
+    if (!ventana) { avisar('El navegador bloqueó la ventana — permite ventanas emergentes para ver la orden de trabajo.', true); return; }
+    ventana.document.write('<p style="font-family:Arial;margin:40px;">Cargando orden de trabajo…</p>');
+    Promise.all([
+      api('/citas/' + citaId),
+      api('/citas/' + citaId + '/comentarios').catch(function () { return []; }),
+    ]).then(function (r) {
+      ventana.document.open();
+      ventana.document.write(construirOrdenTrabajoHtml(r[0], r[1]));
+      ventana.document.close();
+    }).catch(function (e) {
+      ventana.close();
+      avisar(e.message || 'No se pudo cargar la orden de trabajo.', true);
+    });
+  }
 
   function abrirModalCita(modo, datos) {
     citaModoActual = modo;
