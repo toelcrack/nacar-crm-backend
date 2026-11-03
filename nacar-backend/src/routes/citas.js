@@ -432,7 +432,10 @@ router.patch('/:id/estado-taller', async (req, res) => {
     const c = await pool.query('SELECT ingresado_en FROM citas WHERE id = $1', [id]);
     if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
     if (!c.rows[0].ingresado_en) {
-      return res.status(409).json({ error: 'El auto todavía no entró al elevador o patio — el estado se completa recién ahí.' });
+      // Antes de ingresar solo se guardan los trabajos a realizar (los elige Andy al agendar);
+      // el estado real (frenos, km, fotos) se completa recién con el auto en el elevador.
+      await pool.query('UPDATE citas SET tareas = $1::jsonb, actualizado_en = now() WHERE id = $2', [JSON.stringify(tareas), id]);
+      return res.json({ ok: true });
     }
 
     const r = await pool.query(

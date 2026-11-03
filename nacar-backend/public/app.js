@@ -956,9 +956,11 @@
     'Recarga A/C', 'Bujías',
     'Aceite caja', 'Aceite diferencial',
     'Scanner', 'Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero',
+    'Revisión de niveles', 'Luces', 'Test de fuga', 'Reparación eléctrica', 'Rectificado',
+    'Embrague', 'Diagnóstico embrague',
     'Otro',
   ];
-  var TAREAS_DIAGNOSTICO = ['Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero'];
+  var TAREAS_DIAGNOSTICO = ['Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero', 'Diagnóstico embrague'];
   function requiereDiagnostico(nombre) { return TAREAS_DIAGNOSTICO.indexOf(nombre) !== -1; }
 
   // Escala de 4 tramos (28-oct-2026, segunda ronda): <40% Cambiar ahora, 40-49% Revisar
@@ -1055,8 +1057,8 @@
       '<div class="tarea-item">' +
         '<div class="tarea-nombre">' + escapeHtml(t.nombre) + (faltaDiag ? ' <span class="tarea-alerta">⚠ falta diagnóstico</span>' : '') + '</div>' +
         '<div class="tarea-acciones">' +
-          '<button type="button" class="tarea-estado-btn' + (t.estado === 'realizado' ? ' tarea-estado-realizado' : '') + '" data-toggle-tarea-estado="1" data-tarea-idx="' + tIdx + '">' + (t.estado === 'realizado' ? '✓ Realizado' : 'Pendiente') + '</button>' +
-          '<button type="button" class="tarea-vis-btn" data-toggle-tarea-vis="1" data-tarea-idx="' + tIdx + '">' + (t.visibilidad === 'cliente' ? 'Visible cliente' : 'Interno') + '</button>' +
+          '<button type="button" class="tarea-estado-btn tarea-solo-taller' + (t.estado === 'realizado' ? ' tarea-estado-realizado' : '') + '" data-toggle-tarea-estado="1" data-tarea-idx="' + tIdx + '">' + (t.estado === 'realizado' ? '✓ Realizado' : 'Pendiente') + '</button>' +
+          '<button type="button" class="tarea-vis-btn tarea-solo-taller" data-toggle-tarea-vis="1" data-tarea-idx="' + tIdx + '">' + (t.visibilidad === 'cliente' ? 'Visible cliente' : 'Interno') + '</button>' +
           '<button type="button" class="btn-texto" data-eliminar-tarea="1" data-tarea-idx="' + tIdx + '">✕</button>' +
         '</div>' +
       '</div>';
@@ -1577,16 +1579,13 @@
       // "Estado del auto" (frenos, checklist, fotos) solo tiene sentido cuando el auto ya
       // entró físicamente al elevador/patio — en la agenda (lo que arma Andy) solo se dice a
       // qué viene, el mecánico recién completa el estado una vez que el auto está ahí.
-      if (datos.ingresado_en) {
-        tallerHint.hidden = true;
-        tallerWrap.hidden = false;
-        cargarEstadoTaller(datos.id);
-      } else {
-        tallerWrap.hidden = true;
-        tallerHint.hidden = false;
-        tallerEstado = null;
-        tallerVehiculo = null;
-      }
+      // Antes de ingresar, Andy solo elige los trabajos a realizar (aparecen en la orden de
+      // trabajo); el resto (km, frenos %, estado, fotos) queda oculto hasta que el auto entra.
+      tallerHint.hidden = true;
+      tallerWrap.hidden = false;
+      tallerWrap.classList.toggle('taller-agenda', !datos.ingresado_en);
+      document.getElementById('taller-guardar').textContent = datos.ingresado_en ? 'Guardar estado del auto' : 'Guardar trabajos';
+      cargarEstadoTaller(datos.id);
     }
     modal.hidden = false;
   }

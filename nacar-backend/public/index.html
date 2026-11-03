@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>CRM Nácar</title>
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="apple-touch-icon" href="/favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -281,6 +283,7 @@
   .sim-datos strong{color:var(--white);}
 
   /* Estado del auto en el taller (frenos/discos + checklist de tareas, dentro del modal de cita) */
+  .taller-agenda .campo,.taller-agenda #taller-frenos-wrap,.taller-agenda .grid-2,.taller-agenda #taller-generar-informe,.taller-agenda .tarea-solo-taller,.taller-agenda .tarea-diagnostico{display:none!important;}
   .taller-estado-wrap{margin-top:10px;padding-top:14px;border-top:1px solid rgba(26,19,16,0.08);}
   .freno-bloque{background:rgba(26,19,16,0.03);border:1px solid rgba(26,19,16,0.08);border-radius:12px;padding:12px 14px;margin-bottom:6px;}
   .freno-header{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--white-soft);margin-bottom:8px;}
@@ -554,11 +557,11 @@
     <p class="campo-label-suelto" id="cita-chat-hint" hidden>Podrás dejar comentarios (avisos, atrasos, problemas) una vez que guardes esta cita.</p>
 
     <div class="taller-estado-wrap" id="taller-estado-wrap" hidden>
-      <p class="campo-label-suelto">Estado del auto</p>
+      <p class="campo-label-suelto">Trabajos a realizar / estado del auto</p>
       <div class="campo"><label for="taller-km">Kilometraje actual (opcional)</label>
         <input type="text" id="taller-km" placeholder="45.000" inputmode="numeric" />
       </div>
-      <p class="campo-label-suelto">¿Qué hay que revisar o cambiar? (lo marca el asesor de servicio al recibir el auto)</p>
+      <p class="campo-label-suelto">¿Qué hay que revisar o cambiar? (aparece en la orden de trabajo)</p>
       <div class="tareas-chips" id="taller-tareas-chips"></div>
       <div id="taller-frenos-wrap"></div>
       <div class="tareas-lista" id="taller-tareas-lista"></div>
