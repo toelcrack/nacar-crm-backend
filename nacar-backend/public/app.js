@@ -895,8 +895,8 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + '" data-cita-id="' + c.id + '">' +
-              (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '">' +
+              (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
               '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
@@ -1616,7 +1616,7 @@
     var fechaTxt = dias[f.getDay()] + ' ' + f.getDate() + '/' + (f.getMonth() + 1);
     return 'Hola' + nombre + ', te escribimos del Taller Nácar Automotriz. Te agendamos para ' + auto +
       ' (patente ' + c.patente + ') el ' + fechaTxt + ' a las ' + horaCorta(c.hora_inicio) + '.' +
-      (c.nota ? ' Trabajo: ' + c.nota + '.' : '') + ' ¿Nos confirmas respondiendo SÍ? Si necesitas cambiar la hora, avísanos por aquí.';
+      (c.nota ? ' Trabajo: ' + c.nota + '.' : '') + ' Para confirmar toca este enlace y elige Sí o No: ' + location.origin + '/c/' + c.token_confirmacion;
   }
 
   function pintarWhatsappCita() {
@@ -1628,6 +1628,10 @@
     var b = document.getElementById('cita-wa-confirmada');
     b.classList.toggle('activo', !!waCita.confirmada);
     b.textContent = waCita.confirmada ? '✓ Confirmada por el cliente' : 'Marcar confirmada';
+    var estado = document.getElementById('cita-wa-estado');
+    estado.textContent = waCita.respuesta === 'no' ? '✗ El cliente respondió que NO puede en ese horario.' :
+      (waCita.confirmada ? '✓ El cliente confirmó su hora.' : 'Sin respuesta del cliente todavía.');
+    estado.style.color = waCita.respuesta === 'no' ? 'var(--danger-text)' : '';
   }
 
   function cargarWhatsappCita(citaId, ingresada) {
@@ -1636,7 +1640,7 @@
     if (ingresada) { wrap.hidden = true; return; }
     api('/citas/' + citaId).then(function (c) {
       if (String(document.getElementById('cita-id').value) !== String(citaId)) return;
-      waCita = { id: c.id, telefono: c.cliente_telefono || '', confirmada: !!c.confirmada_cliente, mensaje: mensajeWhatsappCita(c) };
+      waCita = { id: c.id, telefono: c.cliente_telefono || '', confirmada: !!c.confirmada_cliente, mensaje: mensajeWhatsappCita(c), respuesta: c.respuesta_cliente || '' };
       wrap.hidden = false;
       document.getElementById('cita-wa-tel').value = waCita.telefono;
       pintarWhatsappCita();
@@ -1652,7 +1656,7 @@
     if (!waCita) return;
     var nuevo = !waCita.confirmada;
     api('/citas/' + waCita.id + '/confirmacion', { method: 'PATCH', body: { confirmada: nuevo } })
-      .then(function () { waCita.confirmada = nuevo; pintarWhatsappCita(); cargarCalendarioSemana(); })
+      .then(function () { waCita.confirmada = nuevo; waCita.respuesta = nuevo ? 'si' : ''; pintarWhatsappCita(); cargarCalendarioSemana(); })
       .catch(function (e) { avisar(e.message || 'No se pudo guardar.', true); });
   };
   document.getElementById('cita-wa-cambiar-tel').onclick = function () {

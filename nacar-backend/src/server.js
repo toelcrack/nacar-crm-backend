@@ -13,6 +13,7 @@ const configuracionRoutes = require('./routes/configuracion');
 const bahiasRoutes = require('./routes/bahias');
 const citasRoutes = require('./routes/citas');
 const clientesRoutes = require('./routes/clientes');
+const confirmarRoutes = require('./routes/confirmar');
 
 const app = express();
 
@@ -31,6 +32,8 @@ app.use('/api/configuracion', configuracionRoutes);
 app.use('/api/bahias', bahiasRoutes);
 app.use('/api/citas', citasRoutes);
 app.use('/api/clientes', clientesRoutes);
+
+app.use('/c', confirmarRoutes);
 
 app.get('/api/salud', (req, res) => res.json({ ok: true }));
 

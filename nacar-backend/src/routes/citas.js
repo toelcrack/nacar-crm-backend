@@ -63,7 +63,7 @@ router.get('/', async (req, res) => {
     }
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
-              c.ingresado_en, c.no_show, c.confirmada_cliente,
+              c.ingresado_en, c.no_show, c.confirmada_cliente, c.respuesta_cliente,
               b.nombre AS bahia_nombre,
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre, cl.telefono AS cliente_telefono
@@ -391,7 +391,7 @@ router.get('/:id', async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.vehiculo_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
-              c.ingresado_en, c.no_show, c.confirmada_cliente,
+              c.ingresado_en, c.no_show, c.confirmada_cliente, c.respuesta_cliente, c.token_confirmacion,
               c.kilometraje, c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
               c.pastillas_tra_tipo, c.pastillas_tra_bloqueada, c.discos_del_rectificar, c.discos_tra_rectificar,
               c.pastillas_del_sensor, c.pastillas_del_reemplazar, c.pastillas_tra_sensor, c.pastillas_tra_reemplazar,
@@ -407,6 +407,13 @@ router.get('/:id', async (req, res) => {
       [id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    // Enlace único para que el cliente responda Sí/No (se crea la primera vez que se pide).
+    if (!r.rows[0].token_confirmacion) {
+      const token = require('crypto').randomBytes(9).toString('base64url');
+      await pool.query('UPDATE citas SET token_confirmacion = $1 WHERE id = $2 AND token_confirmacion IS NULL', [token, id]);
+      const t = await pool.query('SELECT token_confirmacion FROM citas WHERE id = $1', [id]);
+      r.rows[0].token_confirmacion = t.rows[0].token_confirmacion;
+    }
     res.json(r.rows[0]);
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -420,7 +427,7 @@ router.get('/:id', async (req, res) => {
 router.patch('/:id/confirmacion', async (req, res) => {
   try {
     const r = await pool.query(
-      'UPDATE citas SET confirmada_cliente = $1, actualizado_en = now() WHERE id = $2 RETURNING id, confirmada_cliente',
+      "UPDATE citas SET confirmada_cliente = $1, respuesta_cliente = CASE WHEN $1 THEN 'si' ELSE NULL END, actualizado_en = now() WHERE id = $2 RETURNING id, confirmada_cliente",
       [Boolean((req.body || {}).confirmada), Number(req.params.id)]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });

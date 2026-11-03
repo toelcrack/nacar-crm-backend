@@ -263,3 +263,9 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_reemplazar BOOLEAN NOT 
 -- Andy a mano cuando el cliente responde que sí por WhatsApp (el mensaje se envía con un botón
 -- que abre wa.me con el texto ya escrito — no hay envío automático).
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS confirmada_cliente BOOLEAN NOT NULL DEFAULT false;
+
+-- Respuesta del cliente por enlace (3-nov-2026): cada cita puede tener un enlace único
+-- (/c/<token>) que se manda en el mensaje de WhatsApp; el cliente elige Sí/No ahí.
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS token_confirmacion TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS respuesta_cliente TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_citas_token_confirmacion ON citas (token_confirmacion) WHERE token_confirmacion IS NOT NULL;

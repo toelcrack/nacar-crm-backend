@@ -154,4 +154,4 @@ async function enviarCorreoCitaAgendada(datos) {
   }
 }
 
-module.exports = { enviarCorreoCitaAgendada };
+module.exports = { enviarCorreoCitaAgendada, escaparHtml, formatearFecha, formatearHora };
