@@ -1614,12 +1614,13 @@
     var f = new Date(String(c.fecha).slice(0, 10) + 'T12:00:00');
     var dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
     var fechaTxt = dias[f.getDay()] + ' ' + f.getDate() + '/' + (f.getMonth() + 1);
-    return 'Hola' + nombre + ' 👋, te escribimos del *Taller Nacar Automotriz*.\n\n' +
+    // Sin emojis: el enlace wa.me de WhatsApp los daña (salen como "�") al redirigir.
+    return 'Hola' + nombre + ', te escribimos del *Taller Nacar Automotriz*.\n\n' +
       'Te agendamos tu hora:\n' +
-      '🚗 ' + auto + ' (' + c.patente + ')\n' +
-      '📅 ' + fechaTxt + ', ' + horaCorta(c.hora_inicio) + ' hrs\n' +
-      (c.nota ? '🔧 ' + c.nota + '\n' : '') +
-      '\n¿Puedes venir? Confírmanos aquí 👇\n' + 'https://agenda.tallernacarautomotriz.cl/c/' + c.token_confirmacion;
+      '*Vehículo:* ' + auto + ' (' + c.patente + ')\n' +
+      '*Día y hora:* ' + fechaTxt + ', ' + horaCorta(c.hora_inicio) + ' hrs\n' +
+      (c.nota ? '*Trabajo:* ' + c.nota + '\n' : '') +
+      '\n¿Puedes venir? Confírmanos aquí:\n' + 'https://agenda.tallernacarautomotriz.cl/c/' + c.token_confirmacion;
   }
 
   function pintarWhatsappCita() {

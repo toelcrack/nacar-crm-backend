@@ -12,6 +12,12 @@ const WHATSAPP = 'https://wa.me/56981836269';
 function pagina(cuerpo) {
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Tu cita — Taller Nacar Automotriz</title>
+<meta property="og:type" content="website"><meta property="og:site_name" content="Taller Nacar Automotriz">
+<meta property="og:title" content="Tu cita — Taller Nacar Automotriz">
+<meta property="og:description" content="Confirma tu hora en un clic.">
+<meta property="og:image" content="https://agenda.tallernacarautomotriz.cl/og-cita.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="/favicon.png">
 <style>
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#FFF4EC;color:#1A1310;display:flex;justify-content:center;padding:24px 16px}
