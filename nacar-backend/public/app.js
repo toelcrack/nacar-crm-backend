@@ -1614,9 +1614,12 @@
     var f = new Date(String(c.fecha).slice(0, 10) + 'T12:00:00');
     var dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
     var fechaTxt = dias[f.getDay()] + ' ' + f.getDate() + '/' + (f.getMonth() + 1);
-    return 'Hola' + nombre + ', te escribimos del Taller Nácar Automotriz. Te agendamos para ' + auto +
-      ' (patente ' + c.patente + ') el ' + fechaTxt + ' a las ' + horaCorta(c.hora_inicio) + '.' +
-      (c.nota ? ' Trabajo: ' + c.nota + '.' : '') + ' Para confirmar toca este enlace y elige Sí o No: ' + location.origin + '/c/' + c.token_confirmacion;
+    return 'Hola' + nombre + ' 👋, te escribimos del *Taller Nacar Automotriz*.\n\n' +
+      'Te agendamos tu hora:\n' +
+      '🚗 ' + auto + ' (' + c.patente + ')\n' +
+      '📅 ' + fechaTxt + ', ' + horaCorta(c.hora_inicio) + ' hrs\n' +
+      (c.nota ? '🔧 ' + c.nota + '\n' : '') +
+      '\n¿Puedes venir? Confírmanos aquí 👇\n' + location.origin + '/c/' + c.token_confirmacion;
   }
 
   function pintarWhatsappCita() {

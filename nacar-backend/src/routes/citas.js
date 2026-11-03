@@ -409,7 +409,7 @@ router.get('/:id', async (req, res) => {
     if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
     // Enlace único para que el cliente responda Sí/No (se crea la primera vez que se pide).
     if (!r.rows[0].token_confirmacion) {
-      const token = require('crypto').randomBytes(9).toString('base64url');
+      const token = require('crypto').randomBytes(5).toString('base64url');
       await pool.query('UPDATE citas SET token_confirmacion = $1 WHERE id = $2 AND token_confirmacion IS NULL', [token, id]);
       const t = await pool.query('SELECT token_confirmacion FROM citas WHERE id = $1', [id]);
       r.rows[0].token_confirmacion = t.rows[0].token_confirmacion;
