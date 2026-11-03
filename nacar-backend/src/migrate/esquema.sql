@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS clientes (
 CREATE INDEX IF NOT EXISTS idx_clientes_correo ON clientes (LOWER(correo));
 CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes (LOWER(nombre));
 
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS telefono TEXT;
 ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id);
 CREATE INDEX IF NOT EXISTS idx_vehiculos_cliente ON vehiculos (cliente_id);
 
@@ -257,3 +258,8 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_del_sensor BOOLEAN NOT NULL
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_del_reemplazar BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_sensor BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS pastillas_tra_reemplazar BOOLEAN NOT NULL DEFAULT false;
+
+-- WhatsApp de la cita (3-nov-2026): el teléfono vive en el cliente; "confirmada_cliente" lo marca
+-- Andy a mano cuando el cliente responde que sí por WhatsApp (el mensaje se envía con un botón
+-- que abre wa.me con el texto ya escrito — no hay envío automático).
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS confirmada_cliente BOOLEAN NOT NULL DEFAULT false;

@@ -22,29 +22,33 @@ function normalizarCorreo(correo) {
 // clienteIdActual (como al registrar un vehículo nuevo, o al reasignar el dueño explícitamente
 // con PUT /vehiculos/:id/cliente), nombre/correo sueltos siempre buscan-o-crean un cliente
 // distinto — nunca modifican en silencio un cliente que ya tenía otro auto.
-async function resolverClienteId({ clienteId, clienteNombre, clienteCorreo, clienteIdActual }) {
+async function resolverClienteId({ clienteId, clienteNombre, clienteCorreo, clienteTelefono, clienteIdActual }) {
   if (clienteId) {
     const r = await pool.query('SELECT id FROM clientes WHERE id = $1', [Number(clienteId)]);
     return r.rows[0] ? r.rows[0].id : null;
   }
   const nombre = String(clienteNombre || '').trim();
   const correo = normalizarCorreo(clienteCorreo);
-  if (!nombre && !correo) return clienteIdActual || null;
+  const telefono = String(clienteTelefono || '').trim() || null;
+  if (!nombre && !correo && !telefono) return clienteIdActual || null;
 
   if (correo) {
     const existente = await pool.query('SELECT id FROM clientes WHERE LOWER(correo) = LOWER($1)', [correo]);
-    if (existente.rows[0]) return existente.rows[0].id;
+    if (existente.rows[0]) {
+      if (telefono) await pool.query('UPDATE clientes SET telefono = $1 WHERE id = $2', [telefono, existente.rows[0].id]);
+      return existente.rows[0].id;
+    }
   }
 
   if (clienteIdActual) {
     await pool.query(
-      'UPDATE clientes SET nombre = $1, correo = $2, actualizado_en = now() WHERE id = $3',
-      [nombre || 'Sin nombre', correo, clienteIdActual]
+      'UPDATE clientes SET nombre = $1, correo = $2, telefono = $3, actualizado_en = now() WHERE id = $4',
+      [nombre || 'Sin nombre', correo, telefono, clienteIdActual]
     );
     return clienteIdActual;
   }
 
-  const r = await pool.query('INSERT INTO clientes (nombre, correo) VALUES ($1, $2) RETURNING id', [nombre || 'Sin nombre', correo]);
+  const r = await pool.query('INSERT INTO clientes (nombre, correo, telefono) VALUES ($1, $2, $3) RETURNING id', [nombre || 'Sin nombre', correo, telefono]);
   return r.rows[0].id;
 }
 

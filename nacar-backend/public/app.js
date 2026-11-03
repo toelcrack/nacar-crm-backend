@@ -346,6 +346,7 @@
         '<div class="campo"><label>Nombre cliente (opcional)</label><input id="fv-cliente-' + vId + '" type="text" value="' + escapeHtml(v.cliente_nombre || '') + '" /></div>' +
         '<div class="campo"><label>Correo</label><input id="fv-correo-' + vId + '" type="email" value="' + escapeHtml(v.cliente_correo || '') + '" /></div>' +
       '</div>' +
+      '<div class="campo"><label>WhatsApp</label><input id="fv-telefono-' + vId + '" type="tel" value="' + escapeHtml(v.cliente_telefono || '') + '" /></div>' +
       '<p class="campo-label-suelto" style="margin-top:-4px">Estos dos campos corrigen los datos del cliente actual (ej. arreglar un correo mal tipeado). Si el auto se vendió y ahora es de otra persona, usa "Cambiar dueño" en vez de escribir aquí.</p>' +
       '<button class="btn-texto" id="fv-toggle-dueno-' + vId + '" type="button" style="margin-bottom:8px">Cambiar dueño (se vendió a otra persona)</button>' +
       '<div id="fv-dueno-nuevo-' + vId + '" hidden>' +
@@ -390,6 +391,7 @@
         combustible: document.getElementById('fv-combustible-' + vId).value,
         clienteNombre: document.getElementById('fv-cliente-' + vId).value.trim(),
         clienteCorreo: document.getElementById('fv-correo-' + vId).value.trim(),
+        clienteTelefono: document.getElementById('fv-telefono-' + vId).value.trim(),
       };
       return api('/vehiculos/' + vId, { method: 'PUT', body: body }).then(function () {
         delete detalleCache[vId];
@@ -618,7 +620,7 @@
   document.getElementById('btn-cancelar-vehiculo').onclick = ocultarFormVehiculo;
   function ocultarFormVehiculo() {
     document.getElementById('form-vehiculo-wrap').hidden = true;
-    ['f-patente', 'f-modelo', 'f-anio', 'f-cliente', 'f-correo'].forEach(function (id) {
+    ['f-patente', 'f-modelo', 'f-anio', 'f-cliente', 'f-correo', 'f-telefono'].forEach(function (id) {
       document.getElementById(id).value = '';
     });
     resetSelectMarcaNueva();
@@ -634,6 +636,7 @@
         combustible: document.getElementById('f-combustible').value,
         clienteNombre: document.getElementById('f-cliente').value.trim(),
         clienteCorreo: document.getElementById('f-correo').value.trim(),
+        clienteTelefono: document.getElementById('f-telefono').value.trim(),
       };
       return api('/vehiculos', { method: 'POST', body: body }).then(function (v) {
         ocultarFormVehiculo();
@@ -892,8 +895,8 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + '" data-cita-id="' + c.id + '">' +
-              (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + '" data-cita-id="' + c.id + '">' +
+              (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
               '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
@@ -1523,6 +1526,7 @@
     var toggleNuevo = document.getElementById('cita-toggle-nuevo');
     var bloqueNuevo = document.getElementById('cita-vehiculo-nuevo');
     var tallerWrap = document.getElementById('taller-estado-wrap');
+    document.getElementById('cita-wa-wrap').hidden = true;
     var tallerHint = document.getElementById('taller-estado-hint');
 
     if (modo === 'nueva') {
@@ -1552,6 +1556,7 @@
       document.getElementById('cita-nv-motor').value = '';
       document.getElementById('cita-nv-cliente').value = '';
       document.getElementById('cita-nv-correo').value = '';
+      document.getElementById('cita-nv-telefono').value = '';
     } else {
       toggleNuevo.hidden = true;
       bloqueNuevo.hidden = true;
@@ -1576,6 +1581,7 @@
       document.getElementById('cita-chat-mensaje').value = '';
       document.getElementById('cita-chat-atrasado').checked = false;
       cargarComentariosCita(datos.id);
+      cargarWhatsappCita(datos.id, !!datos.ingresado_en);
       // "Estado del auto" (frenos, checklist, fotos) solo tiene sentido cuando el auto ya
       // entró físicamente al elevador/patio — en la agenda (lo que arma Andy) solo se dice a
       // qué viene, el mecánico recién completa el estado una vez que el auto está ahí.
@@ -1589,6 +1595,78 @@
     }
     modal.hidden = false;
   }
+
+  // ---------- Aviso al cliente por WhatsApp (botón que abre wa.me con el mensaje ya escrito) ----------
+  var waCita = null; // { id, telefono, confirmada, mensaje }
+
+  function numeroWhatsapp(tel) {
+    var d = String(tel || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.indexOf('56') === 0 && d.length >= 11) return d;
+    if (d.charAt(0) === '0') d = d.slice(1);
+    if (d.length === 9) return '56' + d;
+    return d;
+  }
+
+  function mensajeWhatsappCita(c) {
+    var nombre = c.cliente_nombre ? ' ' + String(c.cliente_nombre).split(' ')[0] : '';
+    var auto = [c.marca, c.modelo].filter(Boolean).join(' ') || 'tu vehículo';
+    var f = new Date(String(c.fecha).slice(0, 10) + 'T12:00:00');
+    var dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    var fechaTxt = dias[f.getDay()] + ' ' + f.getDate() + '/' + (f.getMonth() + 1);
+    return 'Hola' + nombre + ', te escribimos del Taller Nácar Automotriz. Te agendamos para ' + auto +
+      ' (patente ' + c.patente + ') el ' + fechaTxt + ' a las ' + horaCorta(c.hora_inicio) + '.' +
+      (c.nota ? ' Trabajo: ' + c.nota + '.' : '') + ' ¿Nos confirmas respondiendo SÍ? Si necesitas cambiar la hora, avísanos por aquí.';
+  }
+
+  function pintarWhatsappCita() {
+    var sin = document.getElementById('cita-wa-sin-tel');
+    var con = document.getElementById('cita-wa-con-tel');
+    var tiene = !!numeroWhatsapp(waCita.telefono);
+    sin.hidden = tiene;
+    con.hidden = !tiene;
+    var b = document.getElementById('cita-wa-confirmada');
+    b.classList.toggle('activo', !!waCita.confirmada);
+    b.textContent = waCita.confirmada ? '✓ Confirmada por el cliente' : 'Marcar confirmada';
+  }
+
+  function cargarWhatsappCita(citaId, ingresada) {
+    var wrap = document.getElementById('cita-wa-wrap');
+    waCita = null;
+    if (ingresada) { wrap.hidden = true; return; }
+    api('/citas/' + citaId).then(function (c) {
+      if (String(document.getElementById('cita-id').value) !== String(citaId)) return;
+      waCita = { id: c.id, telefono: c.cliente_telefono || '', confirmada: !!c.confirmada_cliente, mensaje: mensajeWhatsappCita(c) };
+      wrap.hidden = false;
+      document.getElementById('cita-wa-tel').value = waCita.telefono;
+      pintarWhatsappCita();
+    }).catch(function () { wrap.hidden = true; });
+  }
+
+  document.getElementById('cita-wa-enviar').onclick = function () {
+    if (!waCita) return;
+    var url = 'https://wa.me/' + numeroWhatsapp(waCita.telefono) + '?text=' + encodeURIComponent(waCita.mensaje);
+    window.open(url, '_blank');
+  };
+  document.getElementById('cita-wa-confirmada').onclick = function () {
+    if (!waCita) return;
+    var nuevo = !waCita.confirmada;
+    api('/citas/' + waCita.id + '/confirmacion', { method: 'PATCH', body: { confirmada: nuevo } })
+      .then(function () { waCita.confirmada = nuevo; pintarWhatsappCita(); cargarCalendarioSemana(); })
+      .catch(function (e) { avisar(e.message || 'No se pudo guardar.', true); });
+  };
+  document.getElementById('cita-wa-cambiar-tel').onclick = function () {
+    document.getElementById('cita-wa-con-tel').hidden = true;
+    document.getElementById('cita-wa-sin-tel').hidden = false;
+  };
+  document.getElementById('cita-wa-guardar-tel').onclick = function () {
+    if (!waCita) return;
+    var tel = document.getElementById('cita-wa-tel').value.trim();
+    if (!numeroWhatsapp(tel)) { avisar('Escribe un número de WhatsApp válido.', true); return; }
+    api('/citas/' + waCita.id + '/telefono-cliente', { method: 'PATCH', body: { telefono: tel } })
+      .then(function () { waCita.telefono = tel; pintarWhatsappCita(); avisar('Número guardado.'); })
+      .catch(function (e) { avisar(e.message || 'No se pudo guardar el número.', true); });
+  };
 
   // ---------- Chat de comentarios de la cita (avisos, atrasos, problemas) ----------
   function cargarComentariosCita(citaId) {
@@ -1740,6 +1818,7 @@
               motor: document.getElementById('cita-nv-motor').value.trim(),
               clienteNombre: document.getElementById('cita-nv-cliente').value.trim(),
               clienteCorreo: document.getElementById('cita-nv-correo').value.trim(),
+              clienteTelefono: document.getElementById('cita-nv-telefono').value.trim(),
             };
           })
         : Promise.resolve({ bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota });

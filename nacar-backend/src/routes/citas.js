@@ -63,10 +63,10 @@ router.get('/', async (req, res) => {
     }
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
-              c.ingresado_en, c.no_show,
+              c.ingresado_en, c.no_show, c.confirmada_cliente,
               b.nombre AS bahia_nombre,
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
-              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
+              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre, cl.telefono AS cliente_telefono
        FROM citas c
        LEFT JOIN bahias b ON b.id = c.bahia_id
        JOIN vehiculos v ON v.id = c.vehiculo_id
@@ -125,14 +125,14 @@ router.post('/', async (req, res) => {
     if (v.rows[0]) {
       vehiculoId = v.rows[0].id;
     } else {
-      const { marca, modelo, anio, combustible, motor, clienteId, clienteNombre, clienteCorreo } = body;
-      const trajoDatosVehiculo = marca || modelo || clienteId || clienteNombre || clienteCorreo;
+      const { marca, modelo, anio, combustible, motor, clienteId, clienteNombre, clienteCorreo, clienteTelefono } = body;
+      const trajoDatosVehiculo = marca || modelo || clienteId || clienteNombre || clienteCorreo || clienteTelefono;
       if (!trajoDatosVehiculo) {
         return res.status(404).json({
           error: 'Esa patente no está registrada todavía. Complétala aquí mismo (marca, modelo y cliente) o regístrala primero en la pestaña Vehículos.',
         });
       }
-      const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo });
+      const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo, clienteTelefono });
       const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
       const nuevoVehiculo = await pool.query(
         `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, cliente_id, creado_por)
@@ -391,14 +391,14 @@ router.get('/:id', async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.vehiculo_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
-              c.ingresado_en, c.no_show,
+              c.ingresado_en, c.no_show, c.confirmada_cliente,
               c.kilometraje, c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
               c.pastillas_tra_tipo, c.pastillas_tra_bloqueada, c.discos_del_rectificar, c.discos_tra_rectificar,
               c.pastillas_del_sensor, c.pastillas_del_reemplazar, c.pastillas_tra_sensor, c.pastillas_tra_reemplazar,
               c.estado_general, c.nota_estado, c.tareas,
               b.nombre AS bahia_nombre,
               v.patente, v.marca, v.modelo, v.anio, v.combustible,
-              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
+              COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre, cl.telefono AS cliente_telefono
        FROM citas c
        LEFT JOIN bahias b ON b.id = c.bahia_id
        JOIN vehiculos v ON v.id = c.vehiculo_id
@@ -412,6 +412,50 @@ router.get('/:id', async (req, res) => {
     // eslint-disable-next-line no-console
     console.error(e);
     res.status(500).json({ error: 'No se pudo cargar el detalle de la cita.' });
+  }
+});
+
+// PATCH /api/citas/:id/confirmacion -> Andy marca (o desmarca) que el cliente confirmó la hora
+// por WhatsApp. Body: { confirmada: true|false }.
+router.patch('/:id/confirmacion', async (req, res) => {
+  try {
+    const r = await pool.query(
+      'UPDATE citas SET confirmada_cliente = $1, actualizado_en = now() WHERE id = $2 RETURNING id, confirmada_cliente',
+      [Boolean((req.body || {}).confirmada), Number(req.params.id)]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo guardar la confirmación.' });
+  }
+});
+
+// PATCH /api/citas/:id/telefono-cliente -> guarda el WhatsApp del cliente de esta cita (crea el
+// cliente si el auto no tenía uno). Body: { telefono }.
+router.patch('/:id/telefono-cliente', async (req, res) => {
+  const telefono = String((req.body || {}).telefono || '').trim();
+  if (!telefono) return res.status(400).json({ error: 'Escribe el número de WhatsApp.' });
+  try {
+    const c = await pool.query(
+      'SELECT v.id AS vid, v.cliente_id, v.cliente_nombre FROM citas c JOIN vehiculos v ON v.id = c.vehiculo_id WHERE c.id = $1',
+      [Number(req.params.id)]
+    );
+    if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    let clienteId = c.rows[0].cliente_id;
+    if (clienteId) {
+      await pool.query('UPDATE clientes SET telefono = $1, actualizado_en = now() WHERE id = $2', [telefono, clienteId]);
+    } else {
+      const n = await pool.query('INSERT INTO clientes (nombre, telefono) VALUES ($1, $2) RETURNING id', [c.rows[0].cliente_nombre || 'Sin nombre', telefono]);
+      clienteId = n.rows[0].id;
+      await pool.query('UPDATE vehiculos SET cliente_id = $1 WHERE id = $2', [clienteId, c.rows[0].vid]);
+    }
+    res.json({ ok: true, telefono });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo guardar el teléfono.' });
   }
 });
 

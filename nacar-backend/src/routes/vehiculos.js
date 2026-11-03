@@ -15,7 +15,8 @@ const { resolverClienteId } = require('../clientes');
 const CAMPOS_VEHICULO_CON_CLIENTE = `
   v.*,
   COALESCE(c.nombre, v.cliente_nombre) AS cliente_nombre,
-  COALESCE(c.correo, v.cliente_correo) AS cliente_correo
+  COALESCE(c.correo, v.cliente_correo) AS cliente_correo,
+  c.telefono AS cliente_telefono
 `;
 
 const router = express.Router();
@@ -58,12 +59,12 @@ router.get('/', async (req, res) => {
 // si el correo ya está registrado — ver resolverClienteId en src/clientes.js) — así un cliente
 // con dos autos queda con UN solo registro de cliente, no uno por auto.
 router.post('/', async (req, res) => {
-  const { patente, marca, modelo, anio, combustible, motor, vin, clienteId, clienteNombre, clienteCorreo } = req.body || {};
+  const { patente, marca, modelo, anio, combustible, motor, vin, clienteId, clienteNombre, clienteCorreo, clienteTelefono } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
   try {
-    const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo });
+    const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo, clienteTelefono });
     const r = await pool.query(
       `INSERT INTO vehiculos (patente, marca, modelo, anio, combustible, motor, vin, cliente_id, creado_por)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -167,7 +168,7 @@ router.get('/:id', async (req, res) => {
 // clienteNombre/clienteCorreo funcionan igual que en el POST de creación.
 router.put('/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const { patente, marca, modelo, anio, combustible, motor, vin, clienteId, clienteNombre, clienteCorreo } = req.body || {};
+  const { patente, marca, modelo, anio, combustible, motor, vin, clienteId, clienteNombre, clienteCorreo, clienteTelefono } = req.body || {};
   const patenteLimpia = String(patente || '').trim().toUpperCase();
   if (!patenteLimpia) return res.status(400).json({ error: 'La patente es obligatoria.' });
   const comb = combustible === 'diesel' ? 'diesel' : 'bencina';
@@ -175,7 +176,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     const actual = await pool.query('SELECT cliente_id FROM vehiculos WHERE id = $1', [id]);
     if (!actual.rows[0]) return res.status(404).json({ error: 'Vehículo no encontrado.' });
     const clienteIdResuelto = await resolverClienteId({
-      clienteId, clienteNombre, clienteCorreo, clienteIdActual: actual.rows[0].cliente_id,
+      clienteId, clienteNombre, clienteCorreo, clienteTelefono, clienteIdActual: actual.rows[0].cliente_id,
     });
     const r = await pool.query(
       `UPDATE vehiculos SET
@@ -203,9 +204,9 @@ router.put('/:id', requireAdmin, async (req, res) => {
 // uno existente con ese correo).
 router.put('/:id/cliente', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const { clienteId, clienteNombre, clienteCorreo } = req.body || {};
+  const { clienteId, clienteNombre, clienteCorreo, clienteTelefono } = req.body || {};
   try {
-    const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo });
+    const clienteIdResuelto = await resolverClienteId({ clienteId, clienteNombre, clienteCorreo, clienteTelefono });
     if (!clienteIdResuelto) return res.status(400).json({ error: 'Indica el cliente (elige uno existente o escribe uno nuevo).' });
     const r = await pool.query(
       `UPDATE vehiculos SET cliente_id = $1 WHERE id = $2 RETURNING id, patente, cliente_id`,
