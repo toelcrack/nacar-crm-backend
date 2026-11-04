@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth, requireAcceso } = require('../auth');
 const { resolverClienteId } = require('../clientes');
 const { enviarCorreoCitaAgendada } = require('../correo');
 
@@ -49,7 +49,7 @@ function esHoraValida(h) {
 
 // GET /api/citas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD -> citas agendadas en ese rango de fechas
 // (por defecto, si no se manda rango, se usa desde 7 días atrás hasta 60 días adelante).
-router.get('/', async (req, res) => {
+router.get('/', requireAcceso('agenda'), async (req, res) => {
   try {
     let { desde, hasta } = req.query;
     if (!esFechaValida(desde) || !esFechaValida(hasta)) {
@@ -98,7 +98,7 @@ router.get('/', async (req, res) => {
 // Si el vehículo queda con un cliente con correo, se le manda un correo de confirmación desde
 // taller@nacarautomotriz.cl (ver src/correo.js) — nunca bloquea ni hace fallar el agendamiento
 // si el correo no está configurado o falla el envío.
-router.post('/', async (req, res) => {
+router.post('/', requireAcceso('agenda'), async (req, res) => {
   const body = req.body || {};
   const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
   const patente = String(body.patente || '').trim().toUpperCase();
@@ -198,10 +198,11 @@ router.post('/', async (req, res) => {
 // cualquier bahía disponible — por eso se incluye el nombre de la bahía sugerida (si hay) para
 // que el mecánico la vea como referencia, no como algo obligatorio. Debe ir ANTES de "GET /:id"
 // para que Express no la confunda con un id.
-router.get('/pendientes', async (req, res) => {
+router.get('/pendientes', requireAcceso('taller'), async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT c.id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.bahia_id,
+      `SELECT c.id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.bahia_id, c.tareas, c.confirmada_cliente,
+              (now() AT TIME ZONE 'America/Santiago')::time AS hora_ahora,
               b.nombre AS bahia_sugerida,
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
@@ -231,7 +232,7 @@ router.get('/pendientes', async (req, res) => {
 // dejaba bloqueada una bahía ya liberada si antes había tenido un auto "directo" sin hora de
 // término, bug corregido 30-oct-2026). La fecha/hora originalmente agendada por Andy se deja
 // intacta (sirve de registro); ingresado_en guarda el momento real de entrada.
-router.post('/:id/ingresar', async (req, res) => {
+router.post('/:id/ingresar', requireAcceso('taller'), async (req, res) => {
   const id = Number(req.params.id);
   const bahiaId = Number((req.body || {}).bahia_id);
   if (!bahiaId) return res.status(400).json({ error: 'Falta indicar a qué elevador o patio ingresarlo.' });
@@ -275,7 +276,7 @@ router.post('/:id/ingresar', async (req, res) => {
 // "Cancelar cita" (que borra el registro por completo, para corregir un error): esto deja la
 // cita guardada con no_show=true, solo deja de contar como "pendiente" (útil a futuro para
 // medir inasistencia). Solo tiene sentido para una cita que todavía no había entrado.
-router.post('/:id/no-show', async (req, res) => {
+router.post('/:id/no-show', requireAcceso('agenda'), async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query(
@@ -297,7 +298,7 @@ router.post('/:id/no-show', async (req, res) => {
 // PUT /api/citas/:id -> edita fecha/hora/bahía/nota (el estado de atraso/problema ya NO se
 // toca aquí — se maneja posteando un comentario en el chat de la cita, ver más abajo).
 // No permite cambiar el vehículo: si se agendó con la patente equivocada, cancela y crea otra.
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAcceso('agenda'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
   const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
@@ -338,7 +339,7 @@ router.put('/:id', async (req, res) => {
 // otro elevador, sin tocar la hora ni la nota. Body: { fecha, bahia_id }. Una cita que ya
 // entró al taller (ingresado_en) o que fue marcada "no vino" no se mueve. Si cambia el día, se
 // borra la confirmación del cliente (confirmó OTRA fecha) y hay que volver a avisarle.
-router.patch('/:id/mover', async (req, res) => {
+router.patch('/:id/mover', requireAcceso('agenda'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
   const fecha = String(body.fecha || '').trim();
@@ -377,7 +378,7 @@ router.patch('/:id/mover', async (req, res) => {
 // PATCH /api/citas/:id/dueno -> asocia el auto de esta cita a un cliente (dueño) que ya existe,
 // para que el aviso por WhatsApp use su número. Body: { clienteId }. Lo puede hacer cualquier
 // usuario logueado (Andy agenda); cambiar el dueño de un auto vendido sigue siendo solo admin.
-router.patch('/:id/dueno', async (req, res) => {
+router.patch('/:id/dueno', requireAcceso('agenda'), async (req, res) => {
   const clienteId = Number((req.body || {}).clienteId);
   if (!clienteId) return res.status(400).json({ error: 'Elige el dueño.' });
   try {
@@ -398,7 +399,7 @@ router.patch('/:id/dueno', async (req, res) => {
 
 // GET /api/citas/:id/comentarios -> historial completo del chat de esa cita, más antiguo
 // primero (como cualquier chat).
-router.get('/:id/comentarios', async (req, res) => {
+router.get('/:id/comentarios', requireAcceso('taller', 'agenda'), async (req, res) => {
   const citaId = Number(req.params.id);
   try {
     const r = await pool.query(
@@ -417,7 +418,7 @@ router.get('/:id/comentarios', async (req, res) => {
 // POST /api/citas/:id/comentarios -> agrega un mensaje al chat de la cita. Si se marca
 // "atrasado", ese pasa a ser el estado vigente de la cita (se ve como ⚠️ en el calendario) —
 // para "limpiar" la alerta, basta postear un mensaje nuevo sin marcarlo (ej. "Resuelto").
-router.post('/:id/comentarios', async (req, res) => {
+router.post('/:id/comentarios', requireAcceso('taller', 'agenda'), async (req, res) => {
   const citaId = Number(req.params.id);
   const mensaje = String((req.body || {}).mensaje || '').trim();
   const atrasado = Boolean((req.body || {}).atrasado);
@@ -446,7 +447,7 @@ router.post('/:id/comentarios', async (req, res) => {
 
 // GET /api/citas/:id -> detalle completo de una cita, con los datos del vehículo/cliente que
 // necesita el informe impreso (marca, modelo, año, combustible, patente, nombre del cliente).
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireAcceso('taller', 'agenda'), async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query(
@@ -484,7 +485,7 @@ router.get('/:id', async (req, res) => {
 
 // PATCH /api/citas/:id/confirmacion -> Andy marca (o desmarca) que el cliente confirmó la hora
 // por WhatsApp. Body: { confirmada: true|false }.
-router.patch('/:id/confirmacion', async (req, res) => {
+router.patch('/:id/confirmacion', requireAcceso('agenda'), async (req, res) => {
   try {
     const r = await pool.query(
       "UPDATE citas SET confirmada_cliente = $1, respuesta_cliente = CASE WHEN $1 THEN 'si' ELSE NULL END, actualizado_en = now() WHERE id = $2 RETURNING id, confirmada_cliente",
@@ -501,7 +502,7 @@ router.patch('/:id/confirmacion', async (req, res) => {
 
 // PATCH /api/citas/:id/telefono-cliente -> guarda el WhatsApp del cliente de esta cita (crea el
 // cliente si el auto no tenía uno). Body: { telefono }.
-router.patch('/:id/telefono-cliente', async (req, res) => {
+router.patch('/:id/telefono-cliente', requireAcceso('agenda'), async (req, res) => {
   const telefono = String((req.body || {}).telefono || '').trim();
   if (!telefono) return res.status(400).json({ error: 'Escribe el número de WhatsApp.' });
   try {
@@ -535,7 +536,7 @@ router.patch('/:id/telefono-cliente', async (req, res) => {
 // seteado) — en la agenda (lo que arma Andy) solo se especifica a qué viene, el estado real del
 // auto lo completa el mecánico una vez que lo tiene ahí. La UI ya oculta esta sección mientras
 // la cita está pendiente, pero el chequeo se repite acá como resguardo.
-router.patch('/:id/estado-taller', async (req, res) => {
+router.patch('/:id/estado-taller', requireAcceso('taller'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
   const tareas = Array.isArray(body.tareas) ? body.tareas : [];
@@ -590,7 +591,7 @@ router.patch('/:id/estado-taller', async (req, res) => {
 
 // DELETE /api/citas/:id -> cancela la cita agendada (no borra nada del historial del auto,
 // esto es solo el calendario del taller).
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAcceso('agenda'), async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query('DELETE FROM citas WHERE id = $1 RETURNING id', [id]);

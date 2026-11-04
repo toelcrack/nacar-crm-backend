@@ -136,6 +136,11 @@
   }
 
   // ---------- Login ----------
+  // ¿Esta persona puede entrar a la sección 'taller' o 'agenda'? Los administradores, a todo.
+  function tieneAcceso(seccion) {
+    return !!usuarioActual && (usuarioActual.rol === 'admin' || !!usuarioActual['acceso_' + seccion]);
+  }
+
   function mostrarApp(usuario) {
     usuarioActual = usuario;
     document.getElementById('pantalla-login').hidden = true;
@@ -143,6 +148,8 @@
     document.getElementById('usuario-nombre').textContent = usuario.nombre;
     var chip = document.getElementById('usuario-rol-chip');
     chip.textContent = usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
+    document.getElementById('btn-taller').hidden = !tieneAcceso('taller');
+    document.getElementById('btn-agenda').hidden = !tieneAcceso('agenda');
     document.getElementById('btn-equipo').hidden = usuario.rol !== 'admin';
     document.getElementById('btn-estadisticas').hidden = usuario.rol !== 'admin';
     document.getElementById('btn-configuracion').hidden = usuario.rol !== 'admin';
@@ -157,7 +164,7 @@
   }
 
   // ---------- Navegación por pestañas (páginas separadas) ----------
-  var VISTAS = ['vehiculos', 'taller', 'simulador', 'equipo', 'estadisticas', 'configuracion'];
+  var VISTAS = ['vehiculos', 'agenda', 'taller', 'simulador', 'equipo', 'estadisticas', 'configuracion'];
   function mostrarVista(nombre) {
     VISTAS.forEach(function (v) {
       var sec = document.getElementById('vista-' + v);
@@ -169,7 +176,8 @@
     // iniciar sesión, así que un auto creado desde otra pantalla (ej. agendando con patente
     // nueva directo en el calendario) no aparecía hasta buscarlo a mano o recargar la página.
     if (nombre === 'vehiculos') cargarVehiculos();
-    if (nombre === 'taller') { cargarBahias(); cargarCalendarioSemana(); }
+    if (nombre === 'taller') cargarBahias();
+    if (nombre === 'agenda') cargarCalendarioSemana();
     if (nombre === 'simulador') { document.getElementById('sim-patente').focus(); }
     if (nombre === 'equipo') cargarEquipo();
     if (nombre === 'estadisticas') cargarEstadisticas();
@@ -177,6 +185,7 @@
   }
   document.getElementById('btn-vehiculos').onclick = function () { mostrarVista('vehiculos'); };
   document.getElementById('btn-taller').onclick = function () { mostrarVista('taller'); };
+  document.getElementById('btn-agenda').onclick = function () { mostrarVista('agenda'); };
   document.getElementById('btn-simulador').onclick = function () { mostrarVista('simulador'); };
 
   function intentarLogin() {
@@ -650,6 +659,7 @@
   var timerBahiaPatente = {};
 
   function cargarBahias() {
+    if (!tieneAcceso('taller')) return;
     var cont = document.getElementById('grid-bahias');
     api('/bahias').then(function (lista) {
       cont.innerHTML = lista.map(renderBahiaCard).join('');
@@ -718,13 +728,58 @@
   var citasPendientesCache = [];
 
   function cargarCitasPendientes() {
+    if (!tieneAcceso('taller')) return;
     api('/citas/pendientes').then(function (lista) {
       citasPendientesCache = lista;
       actualizarSelectoresPendientes();
+      pintarMasTardeHoy(lista);
     }).catch(function () {
       citasPendientesCache = [];
+      var cont = document.getElementById('lista-mas-tarde');
+      if (cont) cont.innerHTML = '<p class="sin-mant">No se pudo cargar lo que viene hoy.</p>';
     });
   }
+
+  // "Más tarde hoy": las citas de hoy que todavía no entran al taller, en orden de hora, con el
+  // tiempo que falta, para ir preparando elevador/repuestos. Se refresca solo cada minuto
+  // mientras la pestaña Taller está abierta.
+  function minutosDe(hhmm) {
+    var p = String(hhmm || '').split(':');
+    return Number(p[0]) * 60 + Number(p[1] || 0);
+  }
+  function textoDuracion(min) {
+    min = Math.abs(min);
+    if (min < 60) return min + ' min';
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + ' h' + (m ? ' ' + m + ' min' : '');
+  }
+  function pintarMasTardeHoy(lista) {
+    var cont = document.getElementById('lista-mas-tarde');
+    if (!cont) return;
+    if (!lista.length) { cont.innerHTML = '<p class="sin-mant">No hay más autos agendados para hoy.</p>'; return; }
+    cont.innerHTML = lista.map(function (c) {
+      var diff = minutosDe(c.hora_inicio) - minutosDe(c.hora_ahora);
+      var clase = diff < 0 ? ' tarde' : (diff <= 60 ? ' pronto' : '');
+      var cuando = diff < 0 ? 'Debió llegar hace ' + textoDuracion(diff) : (diff === 0 ? 'Llega ahora' : 'Llega en ' + textoDuracion(diff));
+      var tareas = Array.isArray(c.tareas) ? c.tareas : [];
+      var chips = tareas.map(function (t) { return '<span>' + escapeHtml(t && t.nombre ? t.nombre : String(t)) + '</span>'; }).join('');
+      var auto = [c.marca, c.modelo].filter(Boolean).join(' ');
+      return '<div class="mt-item' + clase + '">' +
+        '<div class="mt-hora">' + horaCorta(c.hora_inicio) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div><span class="mt-patente">' + escapeHtml(c.patente) + '</span> <span class="mt-auto">' + escapeHtml(auto) +
+            (c.cliente_nombre ? ' · ' + escapeHtml(c.cliente_nombre) : '') + '</span></div>' +
+          '<div class="mt-cuando">' + cuando + (c.bahia_sugerida ? ' · elevador sugerido: ' + escapeHtml(c.bahia_sugerida) : '') +
+            (c.confirmada_cliente ? ' · ✓ cliente confirmó' : '') + '</div>' +
+          (chips ? '<div class="mt-trabajos">' + chips + '</div>' : '') +
+          (c.nota ? '<div class="mt-auto" style="margin-top:4px">' + escapeHtml(c.nota) + '</div>' : '') +
+        '</div></div>';
+    }).join('');
+  }
+  setInterval(function () {
+    var sec = document.getElementById('vista-taller');
+    if (usuarioActual && sec && !sec.hidden && !document.hidden) cargarCitasPendientes();
+  }, 60000);
 
   // Rellena el selector "Entrar una cita pendiente de hoy" dentro de cada tarjeta de elevador
   // disponible que ya esté en el DOM, con la lista de citas pendientes recién cargada.
@@ -906,6 +961,7 @@
   var calCitasCache = [];
 
   function cargarCalendarioSemana() {
+    if (!tieneAcceso('agenda')) return;
     var lunes = calSemanaInicio;
     var domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
     var desde = ymd(lunes), hasta = ymd(domingo);
@@ -1733,7 +1789,7 @@
   function cargarWhatsappCita(citaId, ingresada) {
     var wrap = document.getElementById('cita-wa-wrap');
     waCita = null;
-    if (ingresada) { wrap.hidden = true; return; }
+    if (ingresada || !tieneAcceso('agenda')) { wrap.hidden = true; return; }
     api('/citas/' + citaId).then(function (c) {
       if (String(document.getElementById('cita-id').value) !== String(citaId)) return;
       document.getElementById('cita-wa-dueno').textContent = c.cliente_nombre ? 'Dueño: ' + c.cliente_nombre : 'Este auto todavía no tiene dueño asociado.';
@@ -2236,10 +2292,15 @@
   function cargarEquipo() {
     api('/usuarios').then(function (lista) {
       var filas = lista.map(function (u) {
+        var acc = u.rol === 'admin'
+          ? 'Todo'
+          : '<label style="margin-right:10px"><input type="checkbox" data-acc="taller" data-uid="' + u.id + '"' + (u.acceso_taller ? ' checked' : '') + ' /> Taller</label>' +
+            '<label><input type="checkbox" data-acc="agenda" data-uid="' + u.id + '"' + (u.acceso_agenda ? ' checked' : '') + ' /> Agenda</label>';
         return '<tr>' +
           '<td>' + escapeHtml(u.nombre) + '</td>' +
           '<td>' + escapeHtml(u.correo) + '</td>' +
           '<td>' + (u.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción') + '</td>' +
+          '<td>' + acc + '</td>' +
           '<td>' + (u.activo ? '' : '<span class="badge-inactivo">Desactivada</span>') +
             (u.id !== usuarioActual.id
               ? '<button class="btn-texto" data-id="' + u.id + '" data-activo="' + (u.activo ? '0' : '1') + '">' + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
@@ -2248,7 +2309,16 @@
         '</tr>';
       }).join('');
       document.getElementById('tabla-equipo-wrap').innerHTML =
-        '<table class="usuarios"><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>';
+        '<table class="usuarios"><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Acceso</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>';
+      document.querySelectorAll('#tabla-equipo-wrap input[data-acc]').forEach(function (chk) {
+        chk.onchange = function () {
+          var body = {};
+          body['acceso_' + chk.getAttribute('data-acc')] = chk.checked;
+          api('/usuarios/' + chk.getAttribute('data-uid') + '/acceso', { method: 'PUT', body: body })
+            .then(function () { avisar('Acceso actualizado.'); })
+            .catch(function (e) { chk.checked = !chk.checked; avisar(e.message || 'No se pudo actualizar el acceso.', true); });
+        };
+      });
       document.querySelectorAll('#tabla-equipo-wrap button[data-id]').forEach(function (b) {
         b.onclick = function () {
           api('/usuarios/' + b.getAttribute('data-id') + '/activo', { method: 'PUT', body: { activo: b.getAttribute('data-activo') === '1' } })
@@ -2263,6 +2333,8 @@
       nombre: document.getElementById('eq-nombre').value.trim(),
       correo: document.getElementById('eq-correo').value.trim(),
       rol: document.getElementById('eq-rol').value,
+      accesoTaller: document.getElementById('eq-acc-taller').checked,
+      accesoAgenda: document.getElementById('eq-acc-agenda').checked,
       password: document.getElementById('eq-password').value,
     };
     api('/usuarios', { method: 'POST', body: body }).then(function () {

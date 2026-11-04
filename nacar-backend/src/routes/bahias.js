@@ -1,11 +1,13 @@
 const express = require('express');
 const { pool } = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth, requireAcceso } = require('../auth');
 
 const router = express.Router();
 // Cualquier usuario logueado (admin o mecánico) puede ver y mover la agenda del taller —
 // es organización del día a día del taller físico, no un dato sensible como Estadísticas.
 router.use(requireAuth);
+// Ver el estado de las bahías lo necesitan Taller y Agenda (las filas del calendario); mover,
+// asignar o liberar autos es solo de Taller.
 
 // "Ocupada ahora" ya NO es un estado propio de la bahía: se calcula en vivo a partir de
 // citas.js — la misma tabla "citas" que alimenta el calendario de abajo. Y, desde el
@@ -40,7 +42,7 @@ const SQL_OCUPACION_ACTUAL = `
 
 // GET /api/bahias -> estado de las bahías (elevadores + patio) AHORA MISMO, calculado desde
 // el calendario (citas de hoy que ya empezaron y no han terminado).
-router.get('/', async (req, res) => {
+router.get('/', requireAcceso('taller', 'agenda'), async (req, res) => {
   try {
     const r = await pool.query(SQL_OCUPACION_ACTUAL);
     res.json(r.rows);
@@ -58,7 +60,7 @@ router.get('/', async (req, res) => {
 // CURRENT_DATE/CURRENT_TIME, que dependen de en qué zona horaria esté configurado el servidor
 // de Postgres — en Railway suele ser UTC, lo que corría la fecha/hora casi 3 horas) — así un
 // walk-in a última hora de la noche queda fechado en el día correcto para el taller.
-router.post('/:id/asignar', async (req, res) => {
+router.post('/:id/asignar', requireAcceso('taller'), async (req, res) => {
   const id = Number(req.params.id);
   const patente = String((req.body || {}).patente || '').trim().toUpperCase();
   const nota = String((req.body || {}).nota || '').trim();
@@ -105,7 +107,7 @@ router.post('/:id/asignar', async (req, res) => {
 // ahora). No la borra: queda en el calendario de hoy como un bloque ya terminado, con su
 // historial de comentarios intacto. OJO: NO toca hora_fin — esa columna sigue siendo solo la
 // hora de término AGENDADA por Andy (dato informativo), nunca la hora real de salida.
-router.post('/:id/liberar', async (req, res) => {
+router.post('/:id/liberar', requireAcceso('taller'), async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query(
@@ -129,7 +131,7 @@ router.post('/:id/liberar', async (req, res) => {
 // POST /api/bahias/:id/mover-auto -> cambia de elevador/patio el auto que está AHORA en la
 // bahía :id (arrastrándolo en la pantalla). Body: { a_bahia_id }. Solo a una bahía libre: la
 // cita en curso conserva su hora de ingreso, estado del auto y comentarios, solo cambia bahia_id.
-router.post('/:id/mover-auto', async (req, res) => {
+router.post('/:id/mover-auto', requireAcceso('taller'), async (req, res) => {
   const origen = Number(req.params.id);
   const destino = Number((req.body || {}).a_bahia_id);
   if (!destino) return res.status(400).json({ error: 'Falta indicar a qué elevador moverlo.' });

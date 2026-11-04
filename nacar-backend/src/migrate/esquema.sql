@@ -269,3 +269,9 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS confirmada_cliente BOOLEAN NOT NULL D
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS token_confirmacion TEXT;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS respuesta_cliente TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_citas_token_confirmacion ON citas (token_confirmacion) WHERE token_confirmacion IS NOT NULL;
+
+-- Permisos por sección (3/4-nov-2026): quién puede entrar a "Taller" y quién a "Agenda". Las
+-- cuentas que ya existían quedan con acceso a las dos (DEFAULT true). Los administradores
+-- siempre tienen acceso a todo, sin importar estos valores.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_taller BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_agenda BOOLEAN NOT NULL DEFAULT true;

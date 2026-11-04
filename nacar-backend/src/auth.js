@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { pool } = require('./db');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -50,4 +51,41 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { firmarToken, setCookieSesion, borrarCookieSesion, requireAuth, requireAdmin, COOKIE_NAME };
+// Permisos por sección. Se leen de la base en cada pedido (no del token), para que un cambio
+// hecho por el administrador valga al tiro, sin que la persona tenga que volver a iniciar sesión.
+// Los administradores pasan siempre. Con varias secciones basta tener UNA (ej. 'taller','agenda').
+async function permisosDe(usuarioId) {
+  let r;
+  try {
+    r = await pool.query('SELECT rol, activo, acceso_taller, acceso_agenda FROM usuarios WHERE id = $1', [usuarioId]);
+  } catch (e) {
+    // Columnas todavía no creadas (el deploy llegó antes que la migración): todos con acceso,
+    // como era antes de existir los permisos, en vez de dejar a todos sin poder entrar.
+    if (e.code !== '42703') throw e;
+    r = await pool.query('SELECT rol, activo, true AS acceso_taller, true AS acceso_agenda FROM usuarios WHERE id = $1', [usuarioId]);
+  }
+  const u = r.rows[0];
+  if (!u || !u.activo) return null;
+  const admin = u.rol === 'admin';
+  return { taller: admin || u.acceso_taller, agenda: admin || u.acceso_agenda };
+}
+
+function requireAcceso(...secciones) {
+  return async (req, res, next) => {
+    try {
+      const p = req.usuario ? await permisosDe(req.usuario.id) : null;
+      if (!p) return res.status(401).json({ error: 'Sesión inválida, inicia sesión de nuevo.' });
+      if (!secciones.some((s) => p[s])) {
+        const nombre = secciones.length === 1 ? 'la sección ' + (secciones[0] === 'taller' ? 'Taller' : 'Agenda') : 'esta sección';
+        return res.status(403).json({ error: 'No tienes acceso a ' + nombre + '. Pídele al administrador que te lo active.' });
+      }
+      next();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      res.status(500).json({ error: 'No se pudo verificar tu acceso.' });
+    }
+  };
+}
+
+module.exports = { firmarToken, setCookieSesion, borrarCookieSesion, requireAuth, requireAdmin, requireAcceso, permisosDe, COOKIE_NAME };

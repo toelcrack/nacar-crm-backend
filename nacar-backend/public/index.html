@@ -254,6 +254,18 @@
   #cita-wa-resultados small{color:var(--gray-3);}
   #cita-wa-confirmada.activo{background:#2e9e5b;color:#fff;border-color:#2e9e5b;}
   .cita-chip.no-show{opacity:0.55;text-decoration:line-through;}
+  .mas-tarde-hoy{margin-top:28px;}
+  .mt-item{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid rgba(26,19,16,0.1);border-radius:12px;background:#fff;margin-bottom:8px;}
+  .mt-hora{font-family:'Oswald',sans-serif;font-size:20px;min-width:62px;color:var(--orange);}
+  .mt-cuando{font-size:12px;color:var(--gray-3);}
+  .mt-item.pronto{border-color:var(--orange);background:rgba(217,100,46,0.07);}
+  .mt-item.pronto .mt-cuando{color:var(--orange);font-weight:700;}
+  .mt-item.tarde{border-color:#c0392b;background:rgba(192,57,43,0.07);}
+  .mt-item.tarde .mt-cuando{color:#c0392b;font-weight:700;}
+  .mt-patente{font-weight:700;font-size:16px;}
+  .mt-auto{color:var(--gray-2);font-size:14px;}
+  .mt-trabajos{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .mt-trabajos span{background:rgba(217,100,46,0.12);border-radius:999px;padding:2px 10px;font-size:12px;}
   .cita-chip[draggable="true"]{cursor:grab;}
   .cita-chip.arrastrando{opacity:0.4;}
   .bahia-card.ocupada[draggable="true"]{cursor:grab;}
@@ -384,6 +396,7 @@
 
   <nav class="tabs-nav">
     <button class="tab-btn activo" id="btn-vehiculos" type="button">Vehículos</button>
+    <button class="tab-btn" id="btn-agenda" type="button">Agenda</button>
     <button class="tab-btn" id="btn-taller" type="button">Taller</button>
     <button class="tab-btn" id="btn-simulador" type="button">Simulador</button>
     <button class="tab-btn" id="btn-equipo" type="button" hidden>Gestionar equipo</button>
@@ -437,14 +450,10 @@
       <p class="nota-registro">Datos guardados en el servidor del taller — compartidos entre todo el equipo.</p>
     </section>
 
-    <section id="vista-taller" class="vista" hidden>
-      <h2 class="vista-titulo">Agenda del taller</h2>
-      <p class="lead">Qué auto está en cada elevador y cuál está esperando en el patio. Para asignar un auto, tiene que estar registrado antes en la pestaña Vehículos (búscalo por patente).</p>
-      <div id="grid-bahias" class="grid-bahias"><p class="sin-mant">Cargando...</p></div>
-
+    <section id="vista-agenda" class="vista" hidden>
+      <h2 class="vista-titulo">Agenda</h2>
       <div class="calendario-taller">
-        <h2 class="vista-titulo" style="font-size:18px">Calendario de mantenciones</h2>
-        <p class="lead">Agenda futura por bahía: qué auto viene, qué día y a qué hora — para que el equipo vea de un vistazo lo que se viene. Marca ⚠️ Atraso/problema si algo se complicó, sin perder la nota original.</p>
+        <p class="lead">Agenda futura por elevador: qué auto viene, qué día y a qué hora. Arrastra una cita para cambiarla de día o de elevador. Marca ⚠️ Atraso/problema si algo se complicó, sin perder la nota original.</p>
         <div class="calendario-header">
           <div class="calendario-nav">
             <button class="btn-cal-nav" id="cal-semana-ant" type="button">‹ Semana anterior</button>
@@ -456,6 +465,18 @@
         <div class="calendario-scroll">
           <div id="grid-calendario" class="grid-calendario"><p class="sin-mant">Cargando...</p></div>
         </div>
+      </div>
+    </section>
+
+    <section id="vista-taller" class="vista" hidden>
+      <h2 class="vista-titulo">Taller</h2>
+      <p class="lead">Qué auto está en cada elevador y cuál está esperando en el patio. Arrastra la tarjeta de un auto a un elevador libre para cambiarlo. Para asignar un auto, tiene que estar registrado antes en la pestaña Vehículos (búscalo por patente).</p>
+      <div id="grid-bahias" class="grid-bahias"><p class="sin-mant">Cargando...</p></div>
+
+      <div class="mas-tarde-hoy">
+        <h2 class="vista-titulo" style="font-size:18px">Más tarde hoy</h2>
+        <p class="lead">Lo que viene hoy y todavía no entra al taller, en orden de hora, para ir preparando el elevador, los repuestos y las herramientas.</p>
+        <div id="lista-mas-tarde"><p class="sin-mant">Cargando...</p></div>
       </div>
     </section>
 
@@ -479,6 +500,11 @@
         <div class="campo"><label for="eq-rol">Rol</label>
           <select id="eq-rol"><option value="mecanico">Mecánico / recepción</option><option value="admin">Administrador</option></select>
         </div>
+      </div>
+      <p class="campo-label-suelto">A qué secciones puede entrar (los administradores siempre entran a todo)</p>
+      <div class="campo" style="display:flex;gap:18px;flex-wrap:wrap">
+        <label style="display:flex;gap:6px;align-items:center"><input id="eq-acc-taller" type="checkbox" checked /> Taller</label>
+        <label style="display:flex;gap:6px;align-items:center"><input id="eq-acc-agenda" type="checkbox" checked /> Agenda</label>
       </div>
       <div class="campo"><label for="eq-password">Contraseña inicial</label><input id="eq-password" type="text" placeholder="Mínimo 6 caracteres" /></div>
       <div class="acciones-form">
