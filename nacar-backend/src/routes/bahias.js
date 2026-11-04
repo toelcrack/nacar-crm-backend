@@ -126,4 +126,38 @@ router.post('/:id/liberar', async (req, res) => {
   }
 });
 
+// POST /api/bahias/:id/mover-auto -> cambia de elevador/patio el auto que está AHORA en la
+// bahía :id (arrastrándolo en la pantalla). Body: { a_bahia_id }. Solo a una bahía libre: la
+// cita en curso conserva su hora de ingreso, estado del auto y comentarios, solo cambia bahia_id.
+router.post('/:id/mover-auto', async (req, res) => {
+  const origen = Number(req.params.id);
+  const destino = Number((req.body || {}).a_bahia_id);
+  if (!destino) return res.status(400).json({ error: 'Falta indicar a qué elevador moverlo.' });
+  if (destino === origen) return res.json({ ok: true, sinCambio: true });
+  try {
+    const d = await pool.query('SELECT id FROM bahias WHERE id = $1', [destino]);
+    if (!d.rows[0]) return res.status(404).json({ error: 'Bahía de destino no encontrada.' });
+    const ocupada = await pool.query(
+      `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND salida_en IS NULL LIMIT 1`,
+      [destino]
+    );
+    if (ocupada.rows[0]) return res.status(409).json({ error: 'Ese elevador ya está ocupado. Libéralo primero.' });
+    const r = await pool.query(
+      `UPDATE citas SET bahia_id = $1, actualizado_en = now()
+       WHERE id = (
+         SELECT id FROM citas WHERE bahia_id = $2 AND ingresado_en IS NOT NULL AND salida_en IS NULL
+         ORDER BY ingresado_en DESC LIMIT 1
+       )
+       RETURNING id`,
+      [destino, origen]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'En el elevador de origen ya no hay un auto.' });
+    res.json({ ok: true, cita_id: r.rows[0].id });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo mover el auto de elevador.' });
+  }
+});
+
 module.exports = router;

@@ -654,6 +654,7 @@
     api('/bahias').then(function (lista) {
       cont.innerHTML = lista.map(renderBahiaCard).join('');
       lista.forEach(function (b) { ligarAccionesBahia(b); });
+      ligarArrastreBahias(cont);
       // Las tarjetas recién se acaban de recrear (nuevos <select> vacíos) — si las citas
       // pendientes ya estaban cargadas de antes, hay que rellenarlas de nuevo ahora que los
       // elementos existen en el DOM (si todavía no habían cargado, cargarCitasPendientes()
@@ -663,6 +664,51 @@
       cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar la agenda del taller.') + '</p>';
     });
     cargarCitasPendientes();
+  }
+
+  // Arrastrar un auto que ya está en un elevador a otro elevador/patio libre.
+  function ligarArrastreBahias(cont) {
+    var origenId = null;
+    cont.querySelectorAll('.bahia-card.ocupada[draggable="true"]').forEach(function (card) {
+      card.addEventListener('dragstart', function (ev) {
+        origenId = card.getAttribute('data-bahia-id');
+        ev.dataTransfer.effectAllowed = 'move';
+        try { ev.dataTransfer.setData('text/plain', origenId); } catch (e) { /* ignorar */ }
+        card.classList.add('arrastrando');
+      });
+      card.addEventListener('dragend', function () {
+        origenId = null;
+        card.classList.remove('arrastrando');
+        cont.querySelectorAll('.bahia-card.drop-sobre').forEach(function (c) { c.classList.remove('drop-sobre'); });
+      });
+    });
+    cont.querySelectorAll('.bahia-card:not(.ocupada)').forEach(function (card) {
+      card.addEventListener('dragover', function (ev) {
+        if (!origenId) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        card.classList.add('drop-sobre');
+      });
+      card.addEventListener('dragleave', function (ev) {
+        if (!card.contains(ev.relatedTarget)) card.classList.remove('drop-sobre');
+      });
+      card.addEventListener('drop', function (ev) {
+        ev.preventDefault();
+        card.classList.remove('drop-sobre');
+        var desde = origenId || ev.dataTransfer.getData('text/plain');
+        origenId = null;
+        if (!desde) return;
+        api('/bahias/' + desde + '/mover-auto', { method: 'POST', body: { a_bahia_id: Number(card.getAttribute('data-bahia-id')) } })
+          .then(function () { avisar('Auto cambiado de elevador.'); cargarBahias(); cargarCalendarioSemana(); })
+          .catch(function (e) { avisar(e.message || 'No se pudo cambiar de elevador.', true); });
+      });
+    });
+    // Un elevador ocupado no recibe: avisar por qué en vez de ignorar el soltar.
+    cont.querySelectorAll('.bahia-card.ocupada').forEach(function (card) {
+      card.addEventListener('dragover', function (ev) {
+        if (origenId && card.getAttribute('data-bahia-id') !== origenId) ev.dataTransfer.dropEffect = 'none';
+      });
+    });
   }
 
   // ---------- Citas pendientes de elevador (agendadas por Andy, sin bahía todavía) ----------
@@ -723,7 +769,7 @@
       '</div>';
 
     if (!ocupada) {
-      return '<div class="bahia-card" id="bahia-' + b.id + '">' + header +
+      return '<div class="bahia-card" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '">' + header +
         '<p class="bahia-disponible-txt">Sin auto asignado.</p>' +
         '<div class="bahia-pendiente-wrap">' +
           '<div class="campo"><label for="bahia-pendiente-' + b.id + '">Entrar una cita pendiente de hoy</label>' +
@@ -750,9 +796,9 @@
     var atrasadoHtml = b.atrasado
       ? '<span class="bahia-estado-chip atrasado-chip">⚠️ Atraso / problema</span>' : '';
 
-    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '">' + header +
+    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '" draggable="true">' + header +
       '<button type="button" class="patente-badge patente-orden" id="bahia-orden-' + b.id + '" title="Ver orden de trabajo (PDF)">' + escapeHtml(b.patente) + '</button>' +
-      '<div class="bahia-orden-hint">Toca la patente para ver la orden de trabajo</div>' +
+      '<div class="bahia-orden-hint">Toca la patente para ver la orden de trabajo. Arrastra la tarjeta a otro elevador libre para cambiarlo.</div>' +
       atrasadoHtml +
       '<div class="bahia-auto">' + autoLinea + '</div>' +
       (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
