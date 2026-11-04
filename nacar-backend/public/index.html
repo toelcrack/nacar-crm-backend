@@ -248,8 +248,15 @@
   .cita-wa-wrap{margin:10px 0;padding:12px;border:1px solid rgba(26,19,16,0.08);border-radius:12px;background:rgba(37,211,102,0.07);}
   .cita-wa-wrap #cita-wa-con-tel[hidden],.cita-wa-wrap #cita-wa-sin-tel[hidden]{display:none;}
   .cita-chip.confirmada{border-color:#2e9e5b;}
+  #cita-wa-resultados{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+  #cita-wa-resultados button{text-align:left;padding:8px 10px;border-radius:10px;border:1px solid rgba(26,19,16,0.15);background:#fff;cursor:pointer;font-size:14px;}
+  #cita-wa-resultados button:hover{border-color:var(--orange);}
+  #cita-wa-resultados small{color:var(--gray-3);}
   #cita-wa-confirmada.activo{background:#2e9e5b;color:#fff;border-color:#2e9e5b;}
   .cita-chip.no-show{opacity:0.55;text-decoration:line-through;}
+  .cita-chip[draggable="true"]{cursor:grab;}
+  .cita-chip.arrastrando{opacity:0.4;}
+  .cal-celda.drop-sobre{outline:2px dashed var(--orange);outline-offset:-2px;background:rgba(217,100,46,0.08);}
   .btn-cal-agregar{width:100%;background:transparent;border:1px dashed rgba(26,19,16,0.18);border-radius:8px;
     color:var(--gray-3);font-size:12px;padding:6px;cursor:pointer;}
   .btn-cal-agregar:hover{border-color:var(--orange);color:var(--orange-light);}
@@ -554,8 +561,12 @@
     <div class="cita-wa-wrap" id="cita-wa-wrap" hidden>
       <p class="campo-label-suelto">Aviso al cliente por WhatsApp</p>
       <p class="campo-label-suelto" id="cita-wa-estado" style="margin-top:-4px"></p>
+      <p class="campo-label-suelto" id="cita-wa-dueno" style="margin-top:-4px"></p>
       <div id="cita-wa-sin-tel" hidden>
-        <div class="campo"><label for="cita-wa-tel">WhatsApp del cliente</label>
+        <div class="campo"><label for="cita-wa-buscar">¿El dueño ya está registrado? Búscalo por nombre o teléfono</label>
+          <input id="cita-wa-buscar" type="search" autocomplete="off" placeholder="Ej: Juan o 9 1234 5678" />
+          <div id="cita-wa-resultados"></div></div>
+        <div class="campo"><label for="cita-wa-tel">…o escribe el WhatsApp del cliente</label>
           <input id="cita-wa-tel" type="tel" placeholder="+56 9 1234 5678" /></div>
         <button class="btn btn-secundario" id="cita-wa-guardar-tel" type="button">Guardar número</button>
       </div>

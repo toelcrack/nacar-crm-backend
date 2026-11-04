@@ -23,18 +23,18 @@ router.get('/', async (req, res) => {
     let r;
     if (q) {
       r = await pool.query(
-        `SELECT c.id, c.nombre, c.correo, COUNT(v.id)::int AS vehiculos_count
+        `SELECT c.id, c.nombre, c.correo, c.telefono, COUNT(v.id)::int AS vehiculos_count
          FROM clientes c
          LEFT JOIN vehiculos v ON v.cliente_id = c.id
-         WHERE c.nombre ILIKE $1 OR c.correo ILIKE $1
+         WHERE c.nombre ILIKE $1 OR c.correo ILIKE $1 OR regexp_replace(COALESCE(c.telefono,''), '[^0-9]', '', 'g') LIKE $2
          GROUP BY c.id
          ORDER BY c.nombre ASC
          LIMIT 20`,
-        [`%${q}%`]
+        [`%${q}%`, `%${q.replace(/\D/g, '') || '@@'}%`]
       );
     } else {
       r = await pool.query(
-        `SELECT c.id, c.nombre, c.correo, COUNT(v.id)::int AS vehiculos_count
+        `SELECT c.id, c.nombre, c.correo, c.telefono, COUNT(v.id)::int AS vehiculos_count
          FROM clientes c
          LEFT JOIN vehiculos v ON v.cliente_id = c.id
          GROUP BY c.id

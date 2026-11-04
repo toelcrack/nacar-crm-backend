@@ -334,6 +334,66 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// PATCH /api/citas/:id/mover -> mover una cita (arrastrándola en el calendario) a otro día y/u
+// otro elevador, sin tocar la hora ni la nota. Body: { fecha, bahia_id }. Una cita que ya
+// entró al taller (ingresado_en) o que fue marcada "no vino" no se mueve. Si cambia el día, se
+// borra la confirmación del cliente (confirmó OTRA fecha) y hay que volver a avisarle.
+router.patch('/:id/mover', async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body || {};
+  const fecha = String(body.fecha || '').trim();
+  const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
+  if (!esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
+  try {
+    if (bahiaId) {
+      const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
+      if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+    }
+    const c = await pool.query('SELECT id, fecha, ingresado_en, no_show FROM citas WHERE id = $1', [id]);
+    const cita = c.rows[0];
+    if (!cita) return res.status(404).json({ error: 'Cita no encontrada.' });
+    if (cita.ingresado_en) return res.status(409).json({ error: 'Este auto ya entró al taller, no se puede mover de día.' });
+    if (cita.no_show) return res.status(409).json({ error: 'Esta cita está marcada como "no vino".' });
+    const r = await pool.query(
+      `UPDATE citas
+       SET bahia_id = $1,
+           confirmada_cliente = CASE WHEN fecha <> $2::date THEN false ELSE confirmada_cliente END,
+           respuesta_cliente = CASE WHEN fecha <> $2::date THEN NULL ELSE respuesta_cliente END,
+           fecha = $2::date,
+           actualizado_en = now()
+       WHERE id = $3
+       RETURNING (SELECT fecha <> $2::date FROM citas WHERE id = $3) AS cambia_dia`,
+      [bahiaId, fecha, id]
+    );
+    const cambiaDia = !!(r.rows[0] && r.rows[0].cambia_dia);
+    res.json({ ok: true, cambiaDia });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo mover la cita.' });
+  }
+});
+
+// PATCH /api/citas/:id/dueno -> asocia el auto de esta cita a un cliente (dueño) que ya existe,
+// para que el aviso por WhatsApp use su número. Body: { clienteId }. Lo puede hacer cualquier
+// usuario logueado (Andy agenda); cambiar el dueño de un auto vendido sigue siendo solo admin.
+router.patch('/:id/dueno', async (req, res) => {
+  const clienteId = Number((req.body || {}).clienteId);
+  if (!clienteId) return res.status(400).json({ error: 'Elige el dueño.' });
+  try {
+    const cl = await pool.query('SELECT id, nombre, correo, telefono FROM clientes WHERE id = $1', [clienteId]);
+    if (!cl.rows[0]) return res.status(404).json({ error: 'Cliente no encontrado.' });
+    const c = await pool.query('SELECT vehiculo_id FROM citas WHERE id = $1', [Number(req.params.id)]);
+    if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    await pool.query('UPDATE vehiculos SET cliente_id = $1 WHERE id = $2', [clienteId, c.rows[0].vehiculo_id]);
+    res.json({ ok: true, cliente: cl.rows[0] });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo asociar el dueño.' });
+  }
+});
+
 // ---------- Chat de comentarios de la cita (atrasos, problemas, avisos) ----------
 
 // GET /api/citas/:id/comentarios -> historial completo del chat de esa cita, más antiguo

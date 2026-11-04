@@ -895,14 +895,14 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '">' +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show) ? '' : ' draggable="true"') + '>' +
               (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
               '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
               '</button>';
           }).join('');
-          html += '<div class="cal-celda' + (d.hoy ? ' hoy-col' : '') + '">' +
+          html += '<div class="cal-celda' + (d.hoy ? ' hoy-col' : '') + '" data-fecha="' + d.key + '" data-bahia-id="' + b.id + '">' +
             chips +
             '<button type="button" class="btn-cal-agregar" data-fecha="' + d.key + '" data-bahia-id="' + b.id + '" data-bahia-nombre="' + escapeHtml(b.nombre) + '">+ Agendar</button>' +
           '</div>';
@@ -915,6 +915,52 @@
           var c = calCitasCache.find(function (x) { return String(x.id) === btn.getAttribute('data-cita-id'); });
           if (c) abrirModalCita('editar', c);
         };
+      });
+      // Arrastrar una cita a otro elevador o a otro día (solo citas que aún no entraron al taller).
+      var citaArrastradaId = null;
+      cont.querySelectorAll('.cita-chip[draggable="true"]').forEach(function (chip) {
+        chip.addEventListener('dragstart', function (ev) {
+          citaArrastradaId = chip.getAttribute('data-cita-id');
+          ev.dataTransfer.effectAllowed = 'move';
+          try { ev.dataTransfer.setData('text/plain', citaArrastradaId); } catch (e) { /* ignorar */ }
+          chip.classList.add('arrastrando');
+        });
+        chip.addEventListener('dragend', function () {
+          citaArrastradaId = null;
+          chip.classList.remove('arrastrando');
+          cont.querySelectorAll('.cal-celda.drop-sobre').forEach(function (c) { c.classList.remove('drop-sobre'); });
+        });
+      });
+      cont.querySelectorAll('.cal-celda').forEach(function (celda) {
+        celda.addEventListener('dragover', function (ev) {
+          if (!citaArrastradaId) return;
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = 'move';
+          celda.classList.add('drop-sobre');
+        });
+        celda.addEventListener('dragleave', function (ev) {
+          if (!celda.contains(ev.relatedTarget)) celda.classList.remove('drop-sobre');
+        });
+        celda.addEventListener('drop', function (ev) {
+          ev.preventDefault();
+          celda.classList.remove('drop-sobre');
+          var id = citaArrastradaId || ev.dataTransfer.getData('text/plain');
+          citaArrastradaId = null;
+          if (!id) return;
+          var c = calCitasCache.find(function (x) { return String(x.id) === String(id); });
+          var fecha = celda.getAttribute('data-fecha');
+          var bahiaId = celda.getAttribute('data-bahia-id');
+          if (!c) return;
+          if (String(c.fecha).slice(0, 10) === fecha && String(c.bahia_id) === String(bahiaId)) return;
+          api('/citas/' + id + '/mover', { method: 'PATCH', body: { fecha: fecha, bahia_id: Number(bahiaId) } })
+            .then(function (r) {
+              avisar(r && r.cambiaDia && (c.confirmada_cliente || c.respuesta_cliente)
+                ? 'Cita movida. Como cambió el día, avísale de nuevo al cliente.'
+                : 'Cita movida.');
+              cargarCalendarioSemana();
+            })
+            .catch(function (e) { avisar(e.message || 'No se pudo mover la cita.', true); cargarCalendarioSemana(); });
+        });
       });
       cont.querySelectorAll('.btn-cal-agregar').forEach(function (btn) {
         btn.onclick = function () {
@@ -1644,6 +1690,9 @@
     if (ingresada) { wrap.hidden = true; return; }
     api('/citas/' + citaId).then(function (c) {
       if (String(document.getElementById('cita-id').value) !== String(citaId)) return;
+      document.getElementById('cita-wa-dueno').textContent = c.cliente_nombre ? 'Dueño: ' + c.cliente_nombre : 'Este auto todavía no tiene dueño asociado.';
+      document.getElementById('cita-wa-buscar').value = '';
+      document.getElementById('cita-wa-resultados').innerHTML = '';
       waCita = { id: c.id, telefono: c.cliente_telefono || '', confirmada: !!c.confirmada_cliente, mensaje: mensajeWhatsappCita(c), respuesta: c.respuesta_cliente || '' };
       wrap.hidden = false;
       document.getElementById('cita-wa-tel').value = waCita.telefono;
@@ -1666,6 +1715,32 @@
   document.getElementById('cita-wa-cambiar-tel').onclick = function () {
     document.getElementById('cita-wa-con-tel').hidden = true;
     document.getElementById('cita-wa-sin-tel').hidden = false;
+  };
+  // Buscar un dueño que ya existe (por nombre o teléfono) y asociarle el auto de esta cita.
+  var timerBuscarDueno = null;
+  document.getElementById('cita-wa-buscar').oninput = function () {
+    var q = this.value.trim();
+    var res = document.getElementById('cita-wa-resultados');
+    clearTimeout(timerBuscarDueno);
+    if (q.length < 2) { res.innerHTML = ''; return; }
+    timerBuscarDueno = setTimeout(function () {
+      api('/clientes?q=' + encodeURIComponent(q)).then(function (lista) {
+        if (!lista.length) { res.innerHTML = '<small>No hay dueños con eso. Escribe el número abajo y se creará.</small>'; return; }
+        res.innerHTML = lista.map(function (cl) {
+          return '<button type="button" data-cliente-id="' + cl.id + '">' + escapeHtml(cl.nombre) +
+            ' <small>' + (cl.telefono ? escapeHtml(cl.telefono) : 'sin teléfono') + ' · ' + cl.vehiculos_count + ' auto(s)</small></button>';
+        }).join('');
+        res.querySelectorAll('button').forEach(function (b) {
+          b.onclick = function () {
+            if (!waCita) return;
+            var citaId = waCita.id;
+            api('/citas/' + citaId + '/dueno', { method: 'PATCH', body: { clienteId: Number(b.getAttribute('data-cliente-id')) } })
+              .then(function () { avisar('Dueño asociado a este auto.'); cargarWhatsappCita(citaId, false); cargarCalendarioSemana(); })
+              .catch(function (e) { avisar(e.message || 'No se pudo asociar el dueño.', true); });
+          };
+        });
+      }).catch(function () { res.innerHTML = ''; });
+    }, 250);
   };
   document.getElementById('cita-wa-guardar-tel').onclick = function () {
     if (!waCita) return;
