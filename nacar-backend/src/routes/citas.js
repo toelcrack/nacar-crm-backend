@@ -345,6 +345,10 @@ router.patch('/:id/mover', requireAcceso('agenda'), async (req, res) => {
   const fecha = String(body.fecha || '').trim();
   const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
   if (!esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
+  // hora_inicio es opcional: la vista "Día" de la agenda (con las horas a la izquierda) la manda
+  // al soltar la cita en otra hora. Si la cita tenía hora de término, se corre igual (misma duración).
+  const horaNueva = body.hora_inicio ? String(body.hora_inicio).trim() : null;
+  if (horaNueva && !esHoraValida(horaNueva)) return res.status(400).json({ error: 'La hora es inválida.' });
   try {
     if (bahiaId) {
       const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
@@ -358,13 +362,18 @@ router.patch('/:id/mover', requireAcceso('agenda'), async (req, res) => {
     const r = await pool.query(
       `UPDATE citas
        SET bahia_id = $1,
-           confirmada_cliente = CASE WHEN fecha <> $2::date THEN false ELSE confirmada_cliente END,
-           respuesta_cliente = CASE WHEN fecha <> $2::date THEN NULL ELSE respuesta_cliente END,
+           confirmada_cliente = CASE WHEN fecha <> $2::date OR ($4::time IS NOT NULL AND hora_inicio <> $4::time) THEN false ELSE confirmada_cliente END,
+           respuesta_cliente = CASE WHEN fecha <> $2::date OR ($4::time IS NOT NULL AND hora_inicio <> $4::time) THEN NULL ELSE respuesta_cliente END,
+           hora_fin = CASE
+             WHEN $4::time IS NOT NULL AND hora_fin IS NOT NULL THEN
+               CASE WHEN $4::time + (hora_fin - hora_inicio) > $4::time THEN $4::time + (hora_fin - hora_inicio) ELSE TIME '23:59' END
+             ELSE hora_fin END,
+           hora_inicio = COALESCE($4::time, hora_inicio),
            fecha = $2::date,
            actualizado_en = now()
        WHERE id = $3
-       RETURNING (SELECT fecha <> $2::date FROM citas WHERE id = $3) AS cambia_dia`,
-      [bahiaId, fecha, id]
+       RETURNING (SELECT fecha <> $2::date OR ($4::time IS NOT NULL AND hora_inicio <> $4::time) FROM citas WHERE id = $3) AS cambia_dia`,
+      [bahiaId, fecha, id, horaNueva]
     );
     const cambiaDia = !!(r.rows[0] && r.rows[0].cambia_dia);
     res.json({ ok: true, cambiaDia });

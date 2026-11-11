@@ -959,6 +959,172 @@
   // SUGERENCIA de Andy en una cita que todavía no entra a ningún lado.
   var citaActualIngresada = false;
   var calCitasCache = [];
+  var calModo = 'dia'; // 'dia' = horas a la izquierda y un elevador por columna; 'semana' = resumen de 7 días
+  try { if (localStorage.getItem('nacar_cal_modo') === 'semana') calModo = 'semana'; } catch (e) { /* ignorar */ }
+  var calDiaSel = ymd(new Date());
+
+  function minutosHora(h) {
+    var p = String(h || '').split(':');
+    return (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0);
+  }
+  function hhmm(min) { return pad2(Math.floor(min / 60)) + ':' + pad2(min % 60); }
+
+  // Vista "Día": eje de horas a la izquierda, un elevador por columna. Click en un espacio vacío
+  // agenda a esa hora; arrastrar una cita la cambia de elevador y/o de hora.
+  function pintarDiaConHoras(cont, bahiasList, citas, dias) {
+    var PX = 1.2; // píxeles por minuto (72 px por hora)
+    var delDia = citas.filter(function (c) { return String(c.fecha).slice(0, 10) === calDiaSel; });
+    var hoyKey = ymd(new Date());
+
+    var html = '<div class="td-dias">';
+    dias.forEach(function (d) {
+      var n = citas.filter(function (c) { return String(c.fecha).slice(0, 10) === d.key; }).length;
+      html += '<button type="button" class="td-dia-btn' + (d.key === calDiaSel ? ' sel' : '') + (d.hoy ? ' hoy' : '') + '" data-dia="' + d.key + '">' +
+        d.label + '<b>' + d.num + '</b><small>' + (n ? n + (n === 1 ? ' cita' : ' citas') : 'libre') + '</small></button>';
+    });
+    html += '</div>';
+
+    // Rango de horas: 8:00–20:00 por defecto, y se amplía si hay citas fuera de ese rango.
+    var ini = 8 * 60, fin = 20 * 60;
+    delDia.forEach(function (c) {
+      var a = minutosHora(c.hora_inicio);
+      var b = c.hora_fin ? minutosHora(c.hora_fin) : a + 60;
+      if (a < ini) ini = Math.floor(a / 60) * 60;
+      if (b > fin) fin = Math.min(24 * 60, Math.ceil(b / 60) * 60);
+    });
+    var alto = (fin - ini) * PX;
+
+    var cols = bahiasList.map(function (b) { return { id: String(b.id), nombre: b.nombre }; });
+    if (delDia.some(function (c) { return !c.bahia_id; })) cols.push({ id: '', nombre: 'Sin elevador' });
+
+    html += '<div class="td" style="grid-template-columns:52px repeat(' + cols.length + ',minmax(150px,1fr))">';
+    html += '<div></div>';
+    cols.forEach(function (c) { html += '<div class="td-cab">' + escapeHtml(c.nombre) + '</div>'; });
+
+    html += '<div class="td-eje" style="height:' + alto + 'px">';
+    for (var m = ini; m <= fin; m += 60) {
+      html += '<div class="td-hora" style="top:' + ((m - ini) * PX) + 'px">' + hhmm(m) + '</div>';
+    }
+    html += '</div>';
+
+    cols.forEach(function (col) {
+      var lista = delDia.filter(function (c) { return String(c.bahia_id || '') === col.id; });
+      // Carriles para que dos citas que se pisan queden lado a lado.
+      var fines = [];
+      var items = lista.map(function (c) {
+        var a = minutosHora(c.hora_inicio);
+        var b = c.hora_fin ? minutosHora(c.hora_fin) : a + 60;
+        if (b - a < 40) b = a + 40;
+        var lane = 0;
+        while (fines[lane] !== undefined && fines[lane] > a) lane++;
+        fines[lane] = b;
+        return { c: c, a: a, b: b, lane: lane };
+      });
+      var nLanes = Math.max(1, fines.length);
+      html += '<div class="td-col' + (calDiaSel === hoyKey ? ' hoy-col' : '') + '" style="height:' + alto + 'px" data-bahia-id="' + col.id + '" data-bahia-nombre="' + escapeHtml(col.nombre) + '">';
+      for (var mm = ini; mm < fin; mm += 30) {
+        html += '<div class="td-linea' + ((mm - ini) % 60 ? ' media' : '') + '" style="top:' + ((mm - ini) * PX) + 'px"></div>';
+      }
+      items.forEach(function (it) {
+        var c = it.c;
+        var ancho = 100 / nLanes;
+        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show) ? '' : ' draggable="true"') +
+          ' style="top:' + ((it.a - ini) * PX) + 'px;height:' + ((it.b - it.a) * PX - 2) + 'px;left:calc(' + (it.lane * ancho) + '% + 2px);width:calc(' + ancho + '% - 4px)">' +
+          (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
+          '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
+          '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
+          (c.nota ? '<span class="cita-nota-prev">' + escapeHtml(c.nota) + '</span>' : '') +
+          '</button>';
+      });
+      if (calDiaSel === hoyKey) {
+        var ahora = new Date();
+        var mAhora = ahora.getHours() * 60 + ahora.getMinutes();
+        if (mAhora >= ini && mAhora <= fin) html += '<div class="td-ahora" style="top:' + ((mAhora - ini) * PX) + 'px"></div>';
+      }
+      html += '</div>';
+    });
+    html += '</div><p class="td-hint">Toca un espacio vacío para agendar a esa hora. Arrastra una cita para cambiarla de hora o de elevador.</p>';
+
+    cont.className = 'grid-calendario modo-dia';
+    cont.innerHTML = html;
+
+    cont.querySelectorAll('.td-dia-btn').forEach(function (b) {
+      b.onclick = function () { calDiaSel = b.getAttribute('data-dia'); cargarCalendarioSemana(); };
+    });
+    cont.querySelectorAll('.cita-chip').forEach(function (btn) {
+      btn.onclick = function (ev) {
+        ev.stopPropagation();
+        var c = calCitasCache.find(function (x) { return String(x.id) === btn.getAttribute('data-cita-id'); });
+        if (c) abrirModalCita('editar', c);
+      };
+    });
+
+    var arrastrada = null, agarre = 0;
+    cont.querySelectorAll('.cita-chip[draggable="true"]').forEach(function (chip) {
+      chip.addEventListener('dragstart', function (ev) {
+        arrastrada = chip.getAttribute('data-cita-id');
+        agarre = ev.clientY - chip.getBoundingClientRect().top;
+        ev.dataTransfer.effectAllowed = 'move';
+        try { ev.dataTransfer.setData('text/plain', arrastrada); } catch (e) { /* ignorar */ }
+        chip.classList.add('arrastrando');
+      });
+      chip.addEventListener('dragend', function () {
+        arrastrada = null;
+        chip.classList.remove('arrastrando');
+        cont.querySelectorAll('.td-col.drop-sobre').forEach(function (c) { c.classList.remove('drop-sobre'); });
+      });
+    });
+
+    function minutosDesdeY(colEl, clientY, restar) {
+      var y = clientY - colEl.getBoundingClientRect().top - (restar || 0);
+      var min = ini + Math.round(y / PX / 15) * 15;
+      return Math.max(ini, Math.min(min, 24 * 60 - 15));
+    }
+
+    cont.querySelectorAll('.td-col').forEach(function (colEl) {
+      colEl.addEventListener('dragover', function (ev) {
+        if (!arrastrada) return;
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        colEl.classList.add('drop-sobre');
+      });
+      colEl.addEventListener('dragleave', function (ev) {
+        if (!colEl.contains(ev.relatedTarget)) colEl.classList.remove('drop-sobre');
+      });
+      colEl.addEventListener('drop', function (ev) {
+        ev.preventDefault();
+        colEl.classList.remove('drop-sobre');
+        var id = arrastrada || ev.dataTransfer.getData('text/plain');
+        arrastrada = null;
+        if (!id) return;
+        var c = calCitasCache.find(function (x) { return String(x.id) === String(id); });
+        if (!c) return;
+        var hora = hhmm(minutosDesdeY(colEl, ev.clientY, agarre));
+        var bahiaId = colEl.getAttribute('data-bahia-id');
+        if (String(c.bahia_id || '') === bahiaId && horaCorta(c.hora_inicio) === hora) return;
+        api('/citas/' + id + '/mover', { method: 'PATCH', body: { fecha: calDiaSel, bahia_id: bahiaId ? Number(bahiaId) : null, hora_inicio: hora } })
+          .then(function (r) {
+            avisar(r && r.cambiaDia && (c.confirmada_cliente || c.respuesta_cliente)
+              ? 'Cita movida a las ' + hora + '. Como cambió el horario, avísale de nuevo al cliente.'
+              : 'Cita movida a las ' + hora + '.');
+            cargarCalendarioSemana();
+          })
+          .catch(function (e) { avisar(e.message || 'No se pudo mover la cita.', true); cargarCalendarioSemana(); });
+      });
+      // Click en un espacio vacío: nueva cita a esa hora en ese elevador.
+      colEl.addEventListener('click', function (ev) {
+        if (ev.target.closest('.cita-chip')) return;
+        var h = hhmm(Math.floor(minutosDesdeY(colEl, ev.clientY, 0) / 30) * 30);
+        var bid = colEl.getAttribute('data-bahia-id');
+        abrirModalCita('nueva', {
+          bahia_id: bid,
+          bahia_nombre: colEl.getAttribute('data-bahia-nombre'),
+          fecha: calDiaSel,
+          hora: h,
+        });
+      });
+    });
+  }
 
   function cargarCalendarioSemana() {
     if (!tieneAcceso('agenda')) return;
@@ -978,6 +1144,15 @@
         var d = new Date(lunes); d.setDate(lunes.getDate() + i);
         dias.push({ key: ymd(d), label: diasCorto[i], num: pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1), hoy: ymd(d) === hoyKey });
       }
+      document.getElementById('cal-modo-dia').classList.toggle('activo', calModo === 'dia');
+      document.getElementById('cal-modo-semana').classList.toggle('activo', calModo === 'semana');
+      if (calModo === 'dia') {
+        // El día elegido tiene que estar dentro de la semana que se está viendo.
+        if (!dias.some(function (d) { return d.key === calDiaSel; })) calDiaSel = dias[0].key;
+        pintarDiaConHoras(cont, bahiasList, citas, dias);
+        return;
+      }
+      cont.className = 'grid-calendario';
       var porBahiaDia = {};
       citas.forEach(function (c) {
         var fkey = String(c.fecha).slice(0, 10);
@@ -1082,18 +1257,34 @@
     });
   }
 
+  function moverDiaSel(dias) {
+    var p = calDiaSel.split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    d.setDate(d.getDate() + dias);
+    calDiaSel = ymd(d);
+  }
   document.getElementById('cal-semana-ant').onclick = function () {
     calSemanaInicio.setDate(calSemanaInicio.getDate() - 7);
+    moverDiaSel(-7);
     cargarCalendarioSemana();
   };
   document.getElementById('cal-semana-sig').onclick = function () {
     calSemanaInicio.setDate(calSemanaInicio.getDate() + 7);
+    moverDiaSel(7);
     cargarCalendarioSemana();
   };
   document.getElementById('cal-semana-hoy').onclick = function () {
     calSemanaInicio = lunesDeSemana(new Date());
+    calDiaSel = ymd(new Date());
     cargarCalendarioSemana();
   };
+  function elegirModoCal(modo) {
+    calModo = modo;
+    try { localStorage.setItem('nacar_cal_modo', modo); } catch (e) { /* ignorar */ }
+    cargarCalendarioSemana();
+  }
+  document.getElementById('cal-modo-dia').onclick = function () { elegirModoCal('dia'); };
+  document.getElementById('cal-modo-semana').onclick = function () { elegirModoCal('semana'); };
 
   // ---------- Estado del auto en el taller (frenos/discos + checklist de tareas) ----------
   var tallerEstado = null; // estado de la cita actualmente abierta en el modal, o null
@@ -1691,7 +1882,7 @@
       tallerEstado = null;
       tallerVehiculo = null;
       document.getElementById('cita-fecha').value = datos.fecha || '';
-      document.getElementById('cita-hora-inicio').value = '';
+      document.getElementById('cita-hora-inicio').value = datos.hora || '';
       document.getElementById('cita-hora-fin').value = '';
       document.getElementById('cita-nota').value = '';
       toggleNuevo.hidden = false;

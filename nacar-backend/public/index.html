@@ -272,6 +272,33 @@
   .bahia-card.arrastrando{opacity:0.5;}
   .bahia-card.drop-sobre{outline:2px dashed var(--orange);outline-offset:-2px;background:rgba(217,100,46,0.08);}
   .cal-celda.drop-sobre{outline:2px dashed var(--orange);outline-offset:-2px;background:rgba(217,100,46,0.08);}
+  .btn-cal-nav.cal-modo.activo{background:var(--orange);border-color:var(--orange);color:#fff;}
+  /* Vista "Día": horas a la izquierda, un elevador por columna */
+  .grid-calendario.modo-dia{display:block;min-width:0;}
+  .td-dias{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+  .td-dia-btn{flex:1;min-width:64px;background:rgba(26,19,16,0.04);border:1px solid rgba(26,19,16,0.1);border-radius:10px;
+    padding:8px 4px;cursor:pointer;font-family:'Oswald',sans-serif;font-size:12px;text-transform:uppercase;color:var(--gray-2);text-align:center;}
+  .td-dia-btn b{display:block;font-size:15px;color:var(--white);font-weight:600;}
+  .td-dia-btn small{display:block;font-size:10px;text-transform:none;color:var(--gray-3);font-family:inherit;}
+  .td-dia-btn.hoy{border-color:var(--glass-border);}
+  .td-dia-btn.sel{background:var(--orange);border-color:var(--orange);color:#fff;}
+  .td-dia-btn.sel b,.td-dia-btn.sel small{color:#fff;}
+  .td{display:grid;gap:0 8px;min-width:560px;}
+  .td-cab{font-family:'Oswald',sans-serif;font-weight:600;font-size:13px;text-align:center;padding:8px 4px;border-radius:8px;background:rgba(26,19,16,0.04);margin-bottom:6px;}
+  .td-eje{position:relative;}
+  .td-hora{position:absolute;left:0;right:6px;text-align:right;font-size:11px;color:var(--gray-3);font-variant-numeric:tabular-nums;transform:translateY(-7px);}
+  .td-col{position:relative;border:1px solid rgba(26,19,16,0.08);border-radius:10px;background-color:rgba(26,19,16,0.02);cursor:cell;overflow:hidden;}
+  .td-col.drop-sobre{outline:2px dashed var(--orange);outline-offset:-2px;background-color:rgba(217,100,46,0.08);}
+  .td-col.hoy-col{background-color:rgba(217,100,46,0.04);}
+  .td-linea{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(26,19,16,0.08);pointer-events:none;}
+  .td-linea.media{border-top-style:dashed;border-top-color:rgba(26,19,16,0.05);}
+  .td-ahora{position:absolute;left:0;right:0;height:0;border-top:2px solid #c0392b;z-index:3;pointer-events:none;}
+  .td-ahora::before{content:'';position:absolute;left:-1px;top:-5px;width:8px;height:8px;border-radius:50%;background:#c0392b;}
+  .td-col .cita-chip{position:absolute;z-index:2;overflow:hidden;width:auto;padding:4px 6px;box-sizing:border-box;}
+  .td-col .cita-chip .cita-hora{display:block;white-space:nowrap;font-size:11px;}
+  .td-col .cita-chip .cita-patente{display:block;font-weight:700;}
+  .td-col .cita-chip .cita-nota-prev{white-space:normal;}
+  .td-hint{font-size:12px;color:var(--gray-3);margin:8px 0 0;}
   .btn-cal-agregar{width:100%;background:transparent;border:1px dashed rgba(26,19,16,0.18);border-radius:8px;
     color:var(--gray-3);font-size:12px;padding:6px;cursor:pointer;}
   .btn-cal-agregar:hover{border-color:var(--orange);color:var(--orange-light);}
@@ -453,14 +480,18 @@
     <section id="vista-agenda" class="vista" hidden>
       <h2 class="vista-titulo">Agenda</h2>
       <div class="calendario-taller">
-        <p class="lead">Agenda futura por elevador: qué auto viene, qué día y a qué hora. Arrastra una cita para cambiarla de día o de elevador. Marca ⚠️ Atraso/problema si algo se complicó, sin perder la nota original.</p>
+        <p class="lead">Agenda por elevador con las horas a la izquierda: elige el día arriba, toca un espacio vacío para agendar y arrastra una cita para cambiarla de hora o de elevador. "Semana" muestra los 7 días de una vez. Marca ⚠️ Atraso/problema si algo se complicó, sin perder la nota original.</p>
         <div class="calendario-header">
           <div class="calendario-nav">
             <button class="btn-cal-nav" id="cal-semana-ant" type="button">‹ Semana anterior</button>
             <span class="calendario-rango" id="cal-rango-txt"></span>
             <button class="btn-cal-nav" id="cal-semana-sig" type="button">Semana siguiente ›</button>
           </div>
-          <button class="btn-cal-nav" id="cal-semana-hoy" type="button">Hoy</button>
+          <div class="calendario-nav">
+            <button class="btn-cal-nav cal-modo activo" id="cal-modo-dia" type="button">Día</button>
+            <button class="btn-cal-nav cal-modo" id="cal-modo-semana" type="button">Semana</button>
+            <button class="btn-cal-nav" id="cal-semana-hoy" type="button">Hoy</button>
+          </div>
         </div>
         <div class="calendario-scroll">
           <div id="grid-calendario" class="grid-calendario"><p class="sin-mant">Cargando...</p></div>
