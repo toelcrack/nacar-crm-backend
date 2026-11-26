@@ -155,6 +155,7 @@
     document.getElementById('usuario-nombre').textContent = usuario.nombre;
     var chip = document.getElementById('usuario-rol-chip');
     chip.textContent = usuario.es_supremo ? 'Administrador supremo' : usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
+    document.getElementById('btn-resumen').hidden = usuario.rol !== 'admin';
     document.getElementById('btn-taller').hidden = !tieneAcceso('taller');
     document.getElementById('btn-agenda').hidden = !tieneAcceso('agenda');
     document.getElementById('btn-equipo').hidden = usuario.rol !== 'admin';
@@ -172,7 +173,7 @@
       var btnT = document.getElementById('btn-taller');
       if (btnT.parentNode && btnT.parentNode.firstElementChild !== btnT) btnT.parentNode.insertBefore(btnT, btnT.parentNode.firstElementChild);
     }
-    mostrarVista(destino && VISTAS.indexOf(destino) >= 0 && btnDestino && !btnDestino.hidden ? destino : (esMecanico ? 'taller' : 'vehiculos'));
+    mostrarVista(destino && VISTAS.indexOf(destino) >= 0 && btnDestino && !btnDestino.hidden ? destino : (esMecanico ? 'taller' : (usuario.rol === 'admin' ? 'resumen' : 'vehiculos')));
   }
   function mostrarLogin() {
     usuarioActual = null;
@@ -181,7 +182,7 @@
   }
 
   // ---------- Navegación por pestañas (páginas separadas) ----------
-  var VISTAS = ['vehiculos', 'agenda', 'taller', 'simulador', 'equipo', 'estadisticas', 'configuracion'];
+  var VISTAS = ['resumen', 'vehiculos', 'agenda', 'taller', 'simulador', 'equipo', 'estadisticas', 'configuracion'];
   function mostrarVista(nombre) {
     VISTAS.forEach(function (v) {
       var sec = document.getElementById('vista-' + v);
@@ -192,6 +193,7 @@
 // Se agrega el refresco de "vehiculos" acá (15-sep-2026): antes solo se cargaba una vez al
     // iniciar sesión, así que un auto creado desde otra pantalla (ej. agendando con patente
     // nueva directo en el calendario) no aparecía hasta buscarlo a mano o recargar la página.
+    if (nombre === 'resumen') cargarResumen();
     if (nombre === 'vehiculos') cargarVehiculos();
     if (nombre === 'taller') { histCache = {}; cargarBahias(); }
     if (nombre === 'agenda') cargarCalendarioSemana();
@@ -207,6 +209,7 @@
     var pantalla = document.getElementById('pantalla-app');
     if (pantalla && !pantalla.hidden && VISTAS.indexOf(d) >= 0 && b && !b.hidden) mostrarVista(d);
   });
+  document.getElementById('btn-resumen').onclick = function () { mostrarVista('resumen'); };
   document.getElementById('btn-vehiculos').onclick = function () { mostrarVista('vehiculos'); };
   document.getElementById('btn-taller').onclick = function () { mostrarVista('taller'); };
   document.getElementById('btn-agenda').onclick = function () { mostrarVista('agenda'); };
@@ -3030,6 +3033,104 @@
     };
     window.addEventListener('appinstalled', function () { btnInstalar.hidden = true; });
   }
+
+  // ---------- Resumen del día (solo administradores) ----------
+  var RS_SVG = function (p, c, w) { return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="' + (c || '#fff') + '" stroke-width="' + (w || 2.2) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>'; };
+  var RS_P = {
+    car: '<path d="M5 16l1.5-5.5A2 2 0 0 1 8.4 9h7.2a2 2 0 0 1 1.9 1.5L19 16"/><path d="M3 16h18v3H3z"/>',
+    ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    cal: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+    box: '<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
+    bang: '<path d="M12 6v7"/><circle cx="12" cy="17.5" r="0.9" fill="#fff"/>',
+    pulse: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+    ref: '<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/>'
+  };
+  var RS_ESTADO = {
+    entregado: ['gy', 'Entregado'], listo: ['gr', 'Listo'], en_taller: ['or', 'En taller'], atrasado: ['am', 'Atrasado'],
+    confirmo: ['gr', 'Confirmó'], sin_responder: ['gy', 'Sin responder'], no_puede: ['am', 'No puede'], no_llego: ['gy', 'No llegó']
+  };
+  function rsPill(color, txt) { return '<span class="rs-pill rs-c-' + color + '"><i></i>' + txt + '</span>'; }
+  function rsLabel(t, bg, icono) {
+    return '<div class="rs-label"><span class="rs-ic" style="background:' + bg + '">' + RS_SVG(icono) + '</span>' + t + '</div>';
+  }
+  function rsKpi(cls, ic, num, et, sub) {
+    return '<div class="rs-kpi ' + cls + '"><span class="rs-ic">' + RS_SVG(ic, cls === 'rs-k4' ? '#1A1310' : '#fff') + '</span>' +
+      '<div class="rs-num">' + num + '</div><div class="rs-et">' + et + '</div><div class="rs-sub">' + sub + '</div></div>';
+  }
+  function fechaLarga(iso) {
+    var p = String(iso).split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    var dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    var meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    return dias[d.getDay()] + ' ' + d.getDate() + ' de ' + meses[d.getMonth()];
+  }
+  function pintarResumen(d) {
+    var k = d.kpi;
+    var h = '<div class="rs-wrap">' +
+      '<div class="rs-top"><div><span class="rs-badge">ADMINISTRADOR</span><h2>Resumen</h2>' +
+        '<div class="rs-fecha">' + fechaLarga(d.fecha) + ' · ' + escapeHtml(d.hora) + '</div></div>' +
+        '<button type="button" class="rs-refrescar" id="rs-refrescar" aria-label="Actualizar">' + RS_SVG(RS_P.ref, '#fff').replace('width="18" height="18"', 'width="21" height="21"') + '</button></div>' +
+      '<div class="rs-kpis">' +
+        rsKpi('rs-k1', RS_P.car, k.ocupadas, 'En el taller', 'de ' + k.total_bahias + ' elevadores') +
+        rsKpi('rs-k2', RS_P.ok, k.listos, 'Listos', k.listos === 1 ? 'esperando entrega' : 'esperando entrega') +
+        rsKpi('rs-k3', RS_P.cal, k.citas_hoy, 'Citas de hoy', k.por_llegar + (k.por_llegar === 1 ? ' por llegar' : ' por llegar')) +
+        rsKpi('rs-k4', RS_P.box, k.entregados, 'Entregados', k.entregados_sin_cita + (k.entregados_sin_cita === 1 ? ' sin cita previa' : ' sin cita previa')) +
+      '</div>';
+
+    h += '<div>' + rsLabel('Requiere atención', '#CF501A', RS_P.bang) + '<div class="rs-grupo rs-atencion">' +
+      (d.atencion.length
+        ? d.atencion.map(function (a) { return '<div class="rs-aviso"><span class="rs-ic">' + RS_SVG(RS_P.bang) + '</span><div>' + a.texto + '</div></div>'; }).join('')
+        : '<div class="rs-ok">Todo en orden por ahora.</div>') +
+      '</div></div>';
+
+    h += '<div>' + rsLabel('Taller ahora', '#A93308', RS_P.pulse) + '<div class="rs-grupo">' +
+      d.bahias.map(function (b) {
+        if (!b.ocupada) return '<div class="rs-bahia-libre"><span>' + escapeHtml(b.nombre) + '</span><span style="font-weight:600">Libre</span></div>';
+        var cls = b.listo ? 'rs-gr' : 'rs-or';
+        var detalle = b.listo
+          ? 'Terminó a las ' + escapeHtml(b.listo_hora)
+          : 'Ingresó a las ' + escapeHtml(b.desde);
+        if (b.tareas_total) detalle += ' · ' + b.tareas_hechas + ' de ' + b.tareas_total + (b.tareas_total === 1 ? ' tarea' : ' tareas');
+        return '<div class="rs-bahia ' + cls + '"><div class="rs-barra-estado"></div><div class="rs-bahia-cuerpo">' +
+          '<div class="rs-peq">' + escapeHtml(b.nombre) + (b.mecanico ? ' · ' + escapeHtml(b.mecanico) : '') + '</div>' +
+          '<div>' + (b.listo ? rsPill('gr', 'Listo para entregar') : rsPill('or', 'En trabajo')) + '</div>' +
+          '<div style="grid-column:1/3;display:flex;align-items:center;gap:10px"><span class="rs-placa">' + escapeHtml(b.patente) + '</span><span style="font-size:15px;font-weight:500">' + escapeHtml(b.auto || '') + '</span></div>' +
+          '<div class="rs-peq" style="grid-column:1/3">' + detalle + '</div></div></div>';
+      }).join('') + '</div></div>';
+
+    h += '<div>' + rsLabel('Citas de hoy', '#1A1310', RS_P.clock) + '<div class="rs-grupo">' +
+      (d.citas.length
+        ? d.citas.map(function (c) {
+            var e = RS_ESTADO[c.estado] || ['gy', c.estado];
+            return '<div class="rs-cita"><span class="rs-hora">' + escapeHtml(c.hora) + '</span>' +
+              '<span style="min-width:0"><strong style="letter-spacing:.04em">' + escapeHtml(c.patente) + '</strong> <span style="color:#6B5B52">' + escapeHtml(c.auto || '') + '</span></span>' +
+              rsPill(e[0], e[1]) + '</div>';
+          }).join('')
+        : '<div class="rs-vacio">No hay citas agendadas para hoy.</div>') + '</div></div>';
+
+    h += '<div>' + rsLabel('Actividad', '#278A45', RS_P.ok) + '<div class="rs-grupo">' +
+      (d.actividad.length
+        ? d.actividad.map(function (a) {
+            var col = a.tipo === 'listo' || (a.tipo === 'respuesta' && a.texto.indexOf('confirmó') >= 0) ? '#2F9E4F' : (a.tipo === 'entrega' ? '#9A8E86' : '#E8742F');
+            return '<div class="rs-act"><span class="rs-pto" style="background:' + col + '"></span><span class="rs-hora">' + escapeHtml(a.hora) + '</span><span>' + a.texto + '</span></div>';
+          }).join('')
+        : '<div class="rs-vacio">Todavía no ha pasado nada hoy.</div>') + '</div></div>' +
+      '</div>';
+    document.getElementById('resumen-contenido').innerHTML = h;
+    document.getElementById('rs-refrescar').onclick = cargarResumen;
+  }
+  function cargarResumen() {
+    api('/resumen').then(pintarResumen).catch(function (e) {
+      var c = document.getElementById('resumen-contenido');
+      if (!c.querySelector('.rs-wrap')) c.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar el resumen.') + '</p>';
+    });
+  }
+  // Se refresca solo cada minuto mientras estás mirando el resumen.
+  setInterval(function () {
+    var v = document.getElementById('vista-resumen');
+    if (v && !v.hidden && !document.hidden && usuarioActual) cargarResumen();
+  }, 60000);
 
   // ---------- Notificaciones: activar / apagar en este celular ----------
   (function () {

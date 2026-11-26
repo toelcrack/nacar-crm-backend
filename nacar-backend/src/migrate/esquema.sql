@@ -305,3 +305,10 @@ CREATE TABLE IF NOT EXISTS app_config (
   clave TEXT PRIMARY KEY,
   valor TEXT NOT NULL
 );
+
+-- Resumen del día (26-nov-2026): quién hizo cada paso de una cita y cuándo respondió el cliente.
+-- Se llenan aparte (sin frenar la acción principal), así que si faltaran nunca rompen el taller.
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS ingresado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS listo_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS salida_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS respondida_en TIMESTAMPTZ;

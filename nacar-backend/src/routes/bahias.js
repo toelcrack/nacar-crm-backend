@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireAcceso } = require('../auth');
 const { avisarCita } = require('../push');
+const { marcarActor } = require('../actor');
 
 const router = express.Router();
 // Cualquier usuario logueado (admin o mecánico) puede ver y mover la agenda del taller —
@@ -97,6 +98,7 @@ router.post('/:id/asignar', requireAcceso('taller'), async (req, res) => {
        ) RETURNING id`,
       [id, v.rows[0].id, nota || null, req.usuario ? req.usuario.id : null]
     );
+    marcarActor(r.rows[0].id, 'ingresado_por', req.usuario && req.usuario.id);
     avisarCita('ingresado', r.rows[0].id, req.usuario);
     res.json({ ok: true, cita_id: r.rows[0].id });
   } catch (e) {
@@ -123,6 +125,7 @@ router.post('/:id/liberar', requireAcceso('taller'), async (req, res) => {
       [id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Esta bahía ya estaba disponible.' });
+    marcarActor(r.rows[0].id, 'salida_por', req.usuario && req.usuario.id);
     avisarCita('entregado', r.rows[0].id, req.usuario);
     res.json({ ok: true });
   } catch (e) {

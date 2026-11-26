@@ -4,6 +4,7 @@ const { requireAuth, requireAcceso } = require('../auth');
 const { resolverClienteId } = require('../clientes');
 const { enviarCorreoCitaAgendada } = require('../correo');
 const { avisarCita } = require('../push');
+const { marcarActor } = require('../actor');
 
 const router = express.Router();
 
@@ -161,6 +162,7 @@ router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
                  NULL, now(), $3, $4) RETURNING id`,
         [bahiaId, vehiculoId, nota || null, req.usuario ? req.usuario.id : null]
       );
+      marcarActor(ahora.rows[0].id, 'ingresado_por', req.usuario && req.usuario.id);
       avisarCita('ingresado', ahora.rows[0].id, req.usuario);
       return res.json({ ok: true, id: ahora.rows[0].id, correo: null });
     }
@@ -288,6 +290,7 @@ router.post('/:id/ingresar', requireAcceso('taller'), async (req, res) => {
        WHERE id = $2`,
       [bahiaId, id]
     );
+    marcarActor(id, 'ingresado_por', req.usuario && req.usuario.id);
     avisarCita('ingresado', id, req.usuario);
     res.json({ ok: true });
   } catch (e) {
@@ -604,7 +607,7 @@ router.post('/:id/listo', requireAcceso('taller'), async (req, res) => {
       [id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Este auto ya no está en el taller.' });
-    if (listo) avisarCita('listo', id, req.usuario);
+    if (listo) { marcarActor(id, 'listo_por', req.usuario && req.usuario.id); avisarCita('listo', id, req.usuario); }
     res.json({ ok: true, listo: r.rows[0].listo });
   } catch (e) {
     // eslint-disable-next-line no-console

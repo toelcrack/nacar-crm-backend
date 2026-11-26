@@ -320,6 +320,50 @@
   .visor-imprimir{background:#D9642E;color:#fff;}
   #visor-doc iframe{flex:1;width:100%;border:0;background:#fff;}
   .bh-sincita{display:block;width:100%;box-sizing:border-box;min-height:54px;margin-top:14px;border:2px dashed #D9642E;border-radius:14px;background:#FDF3EE;color:#8F3A12;font-size:16px;font-weight:700;cursor:pointer;}
+  /* ---------- Resumen del día (administradores) ---------- */
+  .rs-fondo{border-radius:24px;padding:20px 16px 28px;background:radial-gradient(130% 38% at 0% 0%,#FFAE78 0%,rgba(255,174,120,0) 70%),radial-gradient(100% 30% at 100% 6%,#FFD79B 0%,rgba(255,215,155,0) 70%),linear-gradient(180deg,#FBE6D6 0%,#F8EEE7 45%,#F6EFEA 100%);}
+  .rs-wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:24px;}
+  .rs-top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;}
+  .rs-badge{display:inline-block;background:#1A1310;color:#FFD2B0;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.08em;}
+  .rs-top h2{margin:6px 0 0;font-size:36px;font-weight:700;letter-spacing:-.03em;line-height:1.05;}
+  .rs-fecha{font-size:15px;color:#5A3A2A;margin-top:2px;font-weight:500;}
+  .rs-refrescar{width:46px;height:46px;border-radius:50%;border:none;background:#1A1310;box-shadow:0 8px 18px rgba(26,19,16,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .rs-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+  .rs-kpi{border-radius:24px;padding:16px;box-shadow:0 10px 24px rgba(120,50,10,.18);display:flex;flex-direction:column;position:relative;overflow:hidden;}
+  .rs-kpi::after{content:"";position:absolute;right:-30px;top:-30px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.12);}
+  .rs-kpi .rs-num{font-size:44px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin-top:10px;}
+  .rs-kpi .rs-et{font-size:15px;font-weight:700;}
+  .rs-kpi .rs-sub{font-size:13px;font-weight:500;}
+  .rs-ic{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+  .rs-k1{background:linear-gradient(145deg,#CF501A,#A93308);color:#fff;} .rs-k1 .rs-sub{color:#FFE6D6;} .rs-k1 .rs-ic{background:rgba(255,255,255,.22);}
+  .rs-k2{background:linear-gradient(145deg,#278A45,#17592B);color:#fff;} .rs-k2 .rs-sub{color:#D6F0DC;} .rs-k2 .rs-ic{background:rgba(255,255,255,.22);}
+  .rs-k3{background:linear-gradient(145deg,#3E2D24,#1A1310);color:#fff;} .rs-k3 .rs-sub{color:#FFD2B0;} .rs-k3 .rs-ic{background:rgba(255,255,255,.16);}
+  .rs-k4{background:linear-gradient(145deg,#FFE3BC,#FFC27A);color:#1A1310;} .rs-k4 .rs-sub{color:#5A3A12;} .rs-k4 .rs-ic{background:rgba(26,19,16,.12);}
+  .rs-label{display:flex;align-items:center;gap:8px;padding:0 4px 10px;font-size:14px;font-weight:700;}
+  .rs-label .rs-ic{width:22px;height:22px;}
+  .rs-grupo{background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 8px 22px rgba(120,50,10,.10);}
+  .rs-grupo > div + div{border-top:1px solid #F0E6DF;}
+  .rs-grupo.rs-atencion{background:linear-gradient(180deg,#FFF3E2,#FFE9D0);} .rs-grupo.rs-atencion > div + div{border-top-color:#F6D2AE;}
+  .rs-aviso{display:flex;gap:12px;align-items:center;padding:13px 16px;min-height:44px;font-size:15px;line-height:1.35;color:#3B1F10;}
+  .rs-aviso .rs-ic{background:linear-gradient(145deg,#F28A3D,#CF501A);}
+  .rs-ok{padding:16px;font-size:15px;color:#17592B;font-weight:600;}
+  .rs-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;white-space:nowrap;}
+  .rs-pill i{width:7px;height:7px;border-radius:50%;display:inline-block;}
+  .rs-c-gr{background:#E1F3E5;color:#17592B;} .rs-c-gr i{background:#2F9E4F;}
+  .rs-c-or{background:#FBE1D2;color:#A93308;} .rs-c-or i{background:#E8742F;}
+  .rs-c-am{background:#FFEBC7;color:#7A4600;} .rs-c-am i{background:#E39A12;}
+  .rs-c-gy{background:#EDE8E4;color:#4A3F39;} .rs-c-gy i{background:#9A8E86;}
+  .rs-placa{display:inline-block;border:2px solid #1A1310;border-radius:7px;padding:1px 8px;background:#fff;font-weight:700;letter-spacing:.06em;font-size:15px;}
+  .rs-bahia{display:grid;grid-template-columns:5px minmax(0,1fr);}
+  .rs-bahia .rs-barra-estado{background:#9A8E86;} .rs-bahia.rs-gr .rs-barra-estado{background:#2F9E4F;} .rs-bahia.rs-or .rs-barra-estado{background:#E8742F;}
+  .rs-bahia-cuerpo{padding:12px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;}
+  .rs-bahia-cuerpo .rs-peq{font-size:13px;color:#6B5B52;}
+  .rs-bahia-libre{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;min-height:44px;font-size:15px;color:#6B5B52;}
+  .rs-cita{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:center;padding:0 16px;min-height:54px;font-size:15px;}
+  .rs-hora{font-weight:700;color:#B8501F;font-variant-numeric:tabular-nums;}
+  .rs-act{display:grid;grid-template-columns:8px 44px minmax(0,1fr);gap:10px;align-items:start;padding:13px 16px;font-size:15px;line-height:1.35;}
+  .rs-act .rs-pto{width:8px;height:8px;border-radius:50%;margin-top:7px;}
+  .rs-vacio{padding:16px;font-size:15px;color:#6B5B52;}
   .bh-terminar{display:block;width:100%;box-sizing:border-box;min-height:54px;margin-top:16px;border:none;border-radius:14px;background:#2F7D32;color:#fff;font-size:16px;font-weight:700;cursor:pointer;}
   .bh-listo{margin-top:16px;border:1.5px solid #B9D8B0;background:#F1F7EF;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;color:#1E5A22;font-weight:700;font-size:15px;}
   .bh-listo button{min-height:44px;background:none;border:none;color:#1E5A22;text-decoration:underline;font-size:14px;font-weight:600;cursor:pointer;}
@@ -525,6 +569,7 @@
   </header>
 
   <nav class="tabs-nav">
+    <button class="tab-btn" id="btn-resumen" type="button" hidden>Resumen</button>
     <button class="tab-btn activo" id="btn-vehiculos" type="button">Vehículos</button>
     <button class="tab-btn" id="btn-agenda" type="button">Agenda</button>
     <button class="tab-btn" id="btn-taller" type="button">Taller</button>
@@ -536,6 +581,10 @@
 
   <main>
     <div id="aviso" class="aviso"></div>
+
+    <section id="vista-resumen" class="vista rs-fondo" hidden>
+      <div id="resumen-contenido"><p class="sin-mant">Cargando el resumen…</p></div>
+    </section>
 
     <section id="vista-vehiculos" class="vista">
       <h2 class="vista-titulo">Vehículos y mantenciones</h2>
