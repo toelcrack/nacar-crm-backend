@@ -186,7 +186,7 @@
     // iniciar sesión, así que un auto creado desde otra pantalla (ej. agendando con patente
     // nueva directo en el calendario) no aparecía hasta buscarlo a mano o recargar la página.
     if (nombre === 'vehiculos') cargarVehiculos();
-    if (nombre === 'taller') cargarBahias();
+    if (nombre === 'taller') { histCache = {}; cargarBahias(); }
     if (nombre === 'agenda') cargarCalendarioSemana();
     if (nombre === 'simulador') { document.getElementById('sim-patente').focus(); }
     if (nombre === 'equipo') cargarEquipo();
@@ -856,28 +856,124 @@
       '</div>';
     }
 
-    var autoLinea = escapeHtml(b.marca || '') + ' ' + escapeHtml(b.modelo || '') + (b.anio ? ' · ' + escapeHtml(b.anio) : '');
+    var combTxt = b.combustible === 'diesel' ? 'Petróleo' : (b.combustible ? 'Bencina' : '');
+    var autoLinea = escapeHtml(b.marca || '') + ' ' + escapeHtml(b.modelo || '') + (b.anio ? ' · ' + escapeHtml(b.anio) : '') + (combTxt ? ' · ' + combTxt : '');
+    var tareas = Array.isArray(b.tareas) ? b.tareas : [];
+    var hechas = tareas.filter(function (t) { return t && t.estado === 'realizado'; }).length;
+    var tareasHtml = tareas.length
+      ? '<div class="bh-trabajo"><div class="bh-trabajo-top"><h4>Trabajo de hoy</h4><span>' + hechas + ' de ' + tareas.length + ' listo</span></div>' +
+        tareas.map(function (t, i) {
+          var hecha = t && t.estado === 'realizado';
+          return '<button type="button" class="bh-tarea' + (hecha ? ' hecha' : '') + '" data-tarea-idx="' + i + '" aria-pressed="' + (hecha ? 'true' : 'false') + '">' +
+            '<span class="bh-check">' + (hecha ? '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 4.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '') + '</span>' +
+            '<span class="bh-tarea-txt">' + escapeHtml(t && t.nombre ? t.nombre : String(t)) + '</span></button>';
+        }).join('') + '</div>'
+      : '';
     var notaHtml = b.nota
       ? '<div class="bahia-nota">' + escapeHtml(b.nota) + '</div>'
-      : '<div class="bahia-nota vacia">Sin nota — no se especificó qué se le está haciendo.</div>';
+      : (tareas.length ? '' : '<div class="bahia-nota vacia">Sin nota — no se especificó qué se le está haciendo.</div>');
     var atrasadoHtml = b.atrasado
       ? '<span class="bahia-estado-chip atrasado-chip">⚠️ Atraso / problema</span>' : '';
+    var tabActual = tabBahia[b.id] || 'ultima';
 
-    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '" draggable="true">' + header +
-      '<button type="button" class="patente-badge patente-orden" id="bahia-orden-' + b.id + '" title="Ver orden de trabajo (PDF)">' + escapeHtml(b.patente) + '</button>' +
-      '<div class="bahia-orden-hint">Toca la patente para ver la orden de trabajo. Arrastra la tarjeta a otro elevador libre para cambiarlo.</div>' +
+    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '" draggable="true">' +
+      '<div class="bahia-header"><div><span class="bahia-nombre">' + escapeHtml(b.nombre) + '</span><br><span class="bahia-tipo">' + tipoTxt + '</span></div>' +
+        '<span class="bahia-estado-chip ocupada">Ocupada · ' + escapeHtml(tiempoDesde(b.ingresado_en)) + '</span></div>' +
+      '<button type="button" class="bh-patente" id="bahia-orden-' + b.id + '" aria-label="Ver orden de trabajo de ' + escapeHtml(b.patente) + '">' +
+        '<span class="bh-patente-txt">' + escapeHtml(b.patente) + '</span><span class="bh-patente-hint">Ver orden<br>de trabajo</span></button>' +
       atrasadoHtml +
-      '<div class="bahia-auto">' + autoLinea + '</div>' +
-      (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
-      '<div class="bahia-desde">Desde ' + horaDeTimestamp(b.ingresado_en) + '</div>' +
-      notaHtml +
-      '<div id="bahia-hist-' + b.id + '" class="bahia-hist" hidden></div>' +
-      '<div class="acciones-form">' +
-        '<button class="btn-texto" id="bahia-hist-btn-' + b.id + '" type="button">Historial del auto</button>' +
-        '<button class="btn-texto" id="bahia-detalle-' + b.id + '" type="button">Ver detalle y comentarios</button>' +
-        '<button class="btn btn-secundario" id="bahia-liberar-' + b.id + '" type="button">Liberar</button>' +
+      '<div class="bh-auto">' + autoLinea + '</div>' +
+      '<div class="bh-cliente">' + (b.cliente_nombre ? escapeHtml(b.cliente_nombre) + ' · ' : '') + 'ingresó a las ' + horaDeTimestamp(b.ingresado_en) + '</div>' +
+      tareasHtml + notaHtml +
+      '<div class="bh-tabs" role="tablist" aria-label="Información del auto">' +
+        '<button type="button" role="tab" class="bh-tab' + (tabActual === 'ultima' ? ' activa' : '') + '" data-bh-tab="ultima" aria-selected="' + (tabActual === 'ultima') + '">Última visita</button>' +
+        '<button type="button" role="tab" class="bh-tab' + (tabActual === 'hist' ? ' activa' : '') + '" data-bh-tab="hist" id="bahia-tab-hist-' + b.id + '" aria-selected="' + (tabActual === 'hist') + '">Historial</button>' +
+      '</div>' +
+      '<div id="bahia-hist-' + b.id + '" class="bh-panel"><p class="sin-mant">Cargando historial...</p></div>' +
+      '<div class="bh-acciones">' +
+        '<button class="btn btn-secundario" id="bahia-detalle-' + b.id + '" type="button">Detalle y comentarios</button>' +
+        '<button class="btn btn-primario" id="bahia-liberar-' + b.id + '" type="button">Liberar elevador</button>' +
       '</div>' +
     '</div>';
+  }
+
+  // ---- Tarjeta del auto en el elevador (vista mecánico): helpers de historial ----
+  var tabBahia = {};   // bahia id -> 'ultima' | 'hist'
+  var histCache = {};  // vehiculo id -> mantenciones (solo lectura, ya sin costos para no administradores)
+  var MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function tiempoDesde(iso) {
+    var min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    if (min < 60) return min + ' min';
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + ' h' + (m ? ' ' + m + ' min' : '');
+  }
+  function fechaCorta(iso) {
+    var d = String(iso || '').slice(0, 10).split('-');
+    if (d.length < 3) return '';
+    return Number(d[2]) + ' ' + MESES_CORTOS[Number(d[1]) - 1] + ' ' + d[0];
+  }
+  function haceTiempo(iso) {
+    var dias = Math.floor((Date.now() - new Date(String(iso).slice(0, 10) + 'T12:00:00').getTime()) / 86400000);
+    if (dias < 1) return 'hoy';
+    if (dias < 30) return 'hace ' + dias + (dias === 1 ? ' día' : ' días');
+    if (dias < 365) { var ms = Math.floor(dias / 30); return 'hace ' + ms + (ms === 1 ? ' mes' : ' meses'); }
+    var an = Math.floor(dias / 365); return 'hace ' + an + (an === 1 ? ' año' : ' años');
+  }
+  function chipsMantencion(m, combustible) {
+    var c = [];
+    if (m.aceite) c.push('Aceite ' + m.aceite + (m.litros ? ' · ' + m.litros : ''));
+    if (m.filtro_aceite) c.push('Filtro aceite' + (m.filtro_aceite_codigo ? ' ' + m.filtro_aceite_codigo : ''));
+    if (m.filtro_aire) c.push('Filtro aire' + (m.filtro_aire_codigo ? ' ' + m.filtro_aire_codigo : ''));
+    if (m.filtro_polen) c.push('Filtro polen' + (m.filtro_polen_codigo ? ' ' + m.filtro_polen_codigo : ''));
+    if (m.filtro_combustible) c.push(labelCombustible(combustible) + (m.filtro_combustible_codigo ? ' ' + m.filtro_combustible_codigo : ''));
+    return c;
+  }
+  function pintarPanelBahia(b) {
+    var cont = document.getElementById('bahia-hist-' + b.id);
+    if (!cont) return;
+    var lista = histCache[b.vehiculo_id];
+    var btnHist = document.getElementById('bahia-tab-hist-' + b.id);
+    if (!lista) { cont.innerHTML = '<p class="sin-mant">Cargando historial...</p>'; return; }
+    if (btnHist) btnHist.textContent = 'Historial (' + lista.length + ')';
+    if (!lista.length) {
+      cont.innerHTML = '<p class="sin-mant">Primera vez que viene: todavía no hay mantenciones registradas de este auto.</p>';
+      return;
+    }
+    if ((tabBahia[b.id] || 'ultima') === 'ultima') {
+      var m = lista[0];
+      var tiles = [];
+      if (m.aceite) tiles.push(['Aceite', m.aceite, m.litros || '']);
+      if (m.filtro_aceite) tiles.push(['Filtro de aceite', m.filtro_aceite_codigo || 'Sí', '']);
+      if (m.filtro_aire) tiles.push(['Filtro de aire', m.filtro_aire_codigo || 'Sí', '']);
+      if (m.filtro_polen) tiles.push(['Filtro de polen', m.filtro_polen_codigo || 'Sí', '']);
+      if (m.filtro_combustible) tiles.push([labelCombustible(b.combustible), m.filtro_combustible_codigo || 'Sí', '']);
+      cont.innerHTML =
+        '<div class="bh-ult-top"><strong>' + escapeHtml(fechaCorta(m.fecha)) + ' · ' + escapeHtml(haceTiempo(m.fecha)) + '</strong>' +
+          (m.km ? '<span>' + Number(m.km).toLocaleString('es-CL') + ' km</span>' : '') + '</div>' +
+        (tiles.length ? '<div class="bh-label">Lo que usamos la última vez</div><div class="bh-tiles">' + tiles.map(function (t) {
+          return '<div class="bh-tile"><small>' + escapeHtml(t[0]) + '</small><b>' + escapeHtml(t[1]) + '</b>' + (t[2] ? '<small>' + escapeHtml(t[2]) + '</small>' : '') + '</div>';
+        }).join('') + '</div>' : '') +
+        (m.tecnico || m.notas ? '<div class="bh-det">' + escapeHtml([m.tecnico ? 'Técnico: ' + m.tecnico : '', m.notas || ''].filter(Boolean).join(' · ')) + '</div>' : '');
+    } else {
+      cont.innerHTML = '<ul class="bh-linea">' + lista.map(function (m) {
+        var chips = chipsMantencion(m, b.combustible);
+        var det = [m.tecnico ? 'Técnico: ' + m.tecnico : '', m.notas || ''].filter(Boolean).join(' · ');
+        return '<li><span class="bh-punto"></span><div class="bh-item">' +
+          '<div class="bh-item-top"><b>' + escapeHtml(fechaCorta(m.fecha)) + '</b>' + (m.km ? '<span>' + Number(m.km).toLocaleString('es-CL') + ' km</span>' : '') + '</div>' +
+          (chips.length ? '<div class="bh-chips">' + chips.map(function (c) { return '<span>' + escapeHtml(c) + '</span>'; }).join('') + '</div>' : '') +
+          (det ? '<div class="bh-det">' + escapeHtml(det) + '</div>' : '') + '</div></li>';
+      }).join('') + '</ul>';
+    }
+  }
+  function cargarHistBahia(b) {
+    if (histCache[b.vehiculo_id]) { pintarPanelBahia(b); return; }
+    api('/vehiculos/' + b.vehiculo_id + '/historial-taller').then(function (d) {
+      histCache[b.vehiculo_id] = d.mantenciones || [];
+      pintarPanelBahia(b);
+    }).catch(function (e) {
+      var cont = document.getElementById('bahia-hist-' + b.id);
+      if (cont) cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar el historial.') + '</p>';
+    });
   }
 
   function ligarAccionesBahia(b) {
@@ -892,18 +988,27 @@
       return;
     }
     document.getElementById('bahia-orden-' + b.id).onclick = function () { abrirOrdenTrabajo(b.cita_id); };
-    // Historial de lo que ya se le hizo a este auto con nosotros (solo lectura).
-    document.getElementById('bahia-hist-btn-' + b.id).onclick = function () {
-      var cont = document.getElementById('bahia-hist-' + b.id);
-      if (!cont.hidden) { cont.hidden = true; return; }
-      cont.hidden = false;
-      cont.innerHTML = '<p class="sin-mant">Cargando historial...</p>';
-      api('/vehiculos/' + b.vehiculo_id + '/historial-taller').then(function (d) {
-        cont.innerHTML = '<div class="historial-label">Historial con nosotros</div>' + (d.mantenciones.length
-          ? '<ul class="historial">' + d.mantenciones.map(function (m) { return renderMant(m, b.combustible, true); }).join('') + '</ul>'
-          : '<p class="sin-mant">Primera vez que viene: sin mantenciones registradas todavía.</p>');
-      }).catch(function (e) { cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar el historial.') + '</p>'; });
-    };
+    // Pestañas Última visita / Historial (solo lectura) y tareas marcables.
+    document.querySelectorAll('#bahia-' + b.id + ' [data-bh-tab]').forEach(function (t) {
+      t.onclick = function () {
+        tabBahia[b.id] = t.getAttribute('data-bh-tab');
+        document.querySelectorAll('#bahia-' + b.id + ' [data-bh-tab]').forEach(function (x) {
+          var act = x === t; x.classList.toggle('activa', act); x.setAttribute('aria-selected', act ? 'true' : 'false');
+        });
+        pintarPanelBahia(b);
+      };
+    });
+    cargarHistBahia(b);
+    document.querySelectorAll('#bahia-' + b.id + ' [data-tarea-idx]').forEach(function (btn) {
+      btn.onclick = function () {
+        var idx = Number(btn.getAttribute('data-tarea-idx'));
+        var nuevoEstado = btn.classList.contains('hecha') ? 'pendiente' : 'realizado';
+        btn.disabled = true;
+        api('/citas/' + b.cita_id + '/tarea', { method: 'PATCH', body: { idx: idx, estado: nuevoEstado } })
+          .then(function () { cargarBahias(); })
+          .catch(function (e) { btn.disabled = false; avisar(e.message || 'No se pudo marcar la tarea.', true); });
+      };
+    });
     document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
     document.getElementById('bahia-detalle-' + b.id).onclick = function () {
       abrirModalCita('editar', {

@@ -275,6 +275,45 @@
   .mt-trabajos span{background:rgba(217,100,46,0.12);border-radius:999px;padding:2px 10px;font-size:12px;}
   .cita-chip[draggable="true"]{cursor:grab;}
   .cita-chip.arrastrando{opacity:0.4;}
+
+  /* Tarjeta del auto en el elevador (vista mecánico) */
+  .bahia-card.ocupada .bahia-header{margin-bottom:12px;}
+  .bh-patente{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;background:#1A1310;color:#fff;border:none;border-radius:16px;padding:12px 18px;min-height:60px;text-align:left;cursor:pointer;}
+  .bh-patente-txt{font-family:'Oswald',sans-serif;font-weight:600;font-size:34px;letter-spacing:3px;line-height:1;}
+  .bh-patente-hint{font-size:12px;font-weight:600;color:#FFD9C7;text-align:right;line-height:1.3;}
+  .bh-auto{font-size:17px;font-weight:600;margin-top:12px;color:var(--white);}
+  .bh-cliente{font-size:13px;color:var(--gray-3);margin-top:2px;}
+  .bh-trabajo{margin-top:14px;}
+  .bh-trabajo-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;}
+  .bh-trabajo-top h4{margin:0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--gray-3);font-weight:700;}
+  .bh-trabajo-top span{font-size:13px;font-weight:600;color:#8F3A12;}
+  .bh-tarea{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:48px;padding:8px 14px;margin-bottom:8px;border-radius:14px;border:1.5px solid #E7D9D1;background:#fff;color:#1A1310;font-size:16px;font-weight:500;text-align:left;cursor:pointer;font-family:inherit;}
+  .bh-tarea.hecha{background:#F1F7EF;border-color:#B9D8B0;color:#5B6B58;}
+  .bh-tarea.hecha .bh-tarea-txt{text-decoration:line-through;}
+  .bh-check{width:26px;height:26px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;background:#fff;border:2px solid #8A7A70;}
+  .bh-tarea.hecha .bh-check{background:#2F7D32;border-color:#2F7D32;}
+  .bh-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#F4EBE6;border-radius:14px;padding:4px;margin-top:14px;}
+  .bh-tab{min-height:44px;border:none;border-radius:11px;background:transparent;font-size:15px;font-weight:600;color:#1A1310;cursor:pointer;font-family:inherit;}
+  .bh-tab.activa{background:#fff;box-shadow:0 1px 4px rgba(26,19,16,.18);}
+  .bh-panel{margin-top:12px;}
+  .bh-ult-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:16px;}
+  .bh-ult-top span{font-size:15px;color:var(--gray-3);font-weight:500;}
+  .bh-label{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--gray-3);font-weight:700;margin:12px 0 8px;}
+  .bh-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .bh-tile{background:#FDF3EE;border:1px solid #F0C9B6;border-radius:12px;padding:10px 12px;}
+  .bh-tile small{display:block;font-size:12px;color:var(--gray-3);}
+  .bh-tile b{display:block;font-size:15px;margin:2px 0;}
+  .bh-det{font-size:13px;color:var(--gray-3);margin-top:8px;line-height:1.4;}
+  .bh-linea{list-style:none;margin:0;padding:0;}
+  .bh-linea li{display:flex;gap:12px;margin-bottom:12px;}
+  .bh-punto{width:12px;height:12px;border-radius:50%;background:#D9642E;margin-top:5px;flex:none;}
+  .bh-item{flex:1;min-width:0;}
+  .bh-item-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:16px;}
+  .bh-item-top span{font-size:14px;color:var(--gray-3);font-weight:500;}
+  .bh-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+  .bh-chips span{background:#FDF3EE;border:1px solid #F0C9B6;border-radius:999px;padding:4px 10px;font-size:13px;font-weight:500;}
+  .bh-acciones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px;}
+  .bh-acciones .btn{min-height:50px;padding:8px 10px;font-size:15px;line-height:1.2;white-space:normal;margin:0;}
   .bahia-card.ocupada[draggable="true"]{cursor:grab;}
   .bahia-card.arrastrando{opacity:0.5;}
   .bahia-card.drop-sobre{outline:2px dashed var(--orange);outline-offset:-2px;background:rgba(217,100,46,0.08);}

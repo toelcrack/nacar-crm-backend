@@ -28,7 +28,7 @@ const SQL_OCUPACION_ACTUAL = `
          c.discos_del_rectificar, c.discos_tra_rectificar,
          c.pastillas_del_sensor, c.pastillas_del_reemplazar, c.pastillas_tra_sensor, c.pastillas_tra_reemplazar,
          c.estado_general, c.tareas,
-         v.id AS vehiculo_id, v.patente, v.marca, v.modelo, v.anio, v.combustible, v.cliente_nombre
+         v.id AS vehiculo_id, v.patente, v.marca, v.modelo, v.anio, v.combustible, COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre
   FROM bahias b
   LEFT JOIN LATERAL (
     SELECT * FROM citas c2
@@ -37,6 +37,7 @@ const SQL_OCUPACION_ACTUAL = `
     LIMIT 1
   ) c ON true
   LEFT JOIN vehiculos v ON v.id = c.vehiculo_id
+  LEFT JOIN clientes cl ON cl.id = v.cliente_id
   ORDER BY b.orden ASC, b.id ASC
 `;
 

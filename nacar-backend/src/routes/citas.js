@@ -545,6 +545,27 @@ router.patch('/:id/telefono-cliente', requireAcceso('agenda_editar'), async (req
 // seteado) — en la agenda (lo que arma Andy) solo se especifica a qué viene, el estado real del
 // auto lo completa el mecánico una vez que lo tiene ahí. La UI ya oculta esta sección mientras
 // la cita está pendiente, pero el chequeo se repite acá como resguardo.
+// PATCH /api/citas/:id/tarea -> marcar UNA tarea del auto como realizada/pendiente desde la tarjeta
+// del Taller, sin tocar el resto del estado (frenos, km, fotos...). Body: { idx, estado }.
+router.patch('/:id/tarea', requireAcceso('taller'), async (req, res) => {
+  const id = Number(req.params.id);
+  const idx = Number((req.body || {}).idx);
+  const estado = (req.body || {}).estado === 'realizado' ? 'realizado' : 'pendiente';
+  try {
+    const c = await pool.query('SELECT tareas FROM citas WHERE id = $1', [id]);
+    if (!c.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    const tareas = Array.isArray(c.rows[0].tareas) ? c.rows[0].tareas : [];
+    if (!Number.isInteger(idx) || idx < 0 || idx >= tareas.length) return res.status(400).json({ error: 'Esa tarea no existe.' });
+    tareas[idx] = Object.assign({}, tareas[idx], { estado });
+    await pool.query('UPDATE citas SET tareas = $1::jsonb, actualizado_en = now() WHERE id = $2', [JSON.stringify(tareas), id]);
+    res.json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo marcar la tarea.' });
+  }
+});
+
 router.patch('/:id/estado-taller', requireAcceso('taller'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
