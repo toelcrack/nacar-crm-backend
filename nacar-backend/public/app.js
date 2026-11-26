@@ -1115,8 +1115,13 @@
     });
     html += '</div>';
 
-    // Rango de horas: 8:00–20:00 por defecto, y se amplía si hay citas fuera de ese rango.
-    var ini = 8 * 60, fin = 20 * 60;
+    // Horario del taller: lunes a jueves 9:00–18:30, viernes 9:00–18:00, sábado 10:00–14:00.
+    // Se amplía solo si hay citas fuera de ese rango (así nunca se esconde una cita).
+    var pd = calDiaSel.split('-');
+    var dow = new Date(Number(pd[0]), Number(pd[1]) - 1, Number(pd[2])).getDay();
+    var HORARIO = { 1: [540, 1110], 2: [540, 1110], 3: [540, 1110], 4: [540, 1110], 5: [540, 1080], 6: [600, 840] };
+    var hor = HORARIO[dow] || [600, 840]; // domingo: cerrado, rango corto por defecto
+    var ini = hor[0], fin = hor[1];
     delDia.forEach(function (c) {
       var a = minutosHora(c.hora_inicio);
       var b = c.hora_fin ? minutosHora(c.hora_fin) : a + 60;
