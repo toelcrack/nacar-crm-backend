@@ -2500,7 +2500,8 @@
               ? '<button class="btn-texto" data-id="' + u.id + '" data-activo="' + (u.activo ? '0' : '1') + '">' + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
               : '') +
             (usuarioActual.es_supremo
-              ? '<button class="btn-texto" data-clave="' + u.id + '" data-nombre="' + escapeHtml(u.nombre) + '">Cambiar clave</button>'
+              ? '<button class="btn-texto" data-datos="' + u.id + '" data-nombre="' + escapeHtml(u.nombre) + '" data-correo="' + escapeHtml(u.correo) + '">Cambiar correo</button>' +
+                '<button class="btn-texto" data-clave="' + u.id + '" data-nombre="' + escapeHtml(u.nombre) + '">Cambiar clave</button>'
               : '') +
           '</td>' +
         '</tr>';
@@ -2533,6 +2534,31 @@
             api('/usuarios/' + uid + '/password', { method: 'PUT', body: { password: clave } })
               .then(function (r) { avisar('Clave de ' + (r && r.nombre ? r.nombre : 'la cuenta') + ' cambiada.'); cargarEquipo(); })
               .catch(function (e) { avisar(e.message || 'No se pudo cambiar la clave.', true); });
+          };
+        };
+      });
+      // Cambiar correo y nombre de cualquier cuenta (solo el administrador supremo).
+      document.querySelectorAll('#tabla-equipo-wrap button[data-datos]').forEach(function (b) {
+        b.onclick = function () {
+          var celda = b.parentNode;
+          var uid = b.getAttribute('data-datos');
+          celda.innerHTML = '<div class="clave-form"><input type="text" class="clave-input dato-nombre" placeholder="Nombre" autocomplete="off" />' +
+            '<input type="email" class="clave-input dato-correo" placeholder="Correo" autocomplete="off" autocapitalize="off" spellcheck="false" />' +
+            '<button class="btn btn-primario dato-ok" type="button">Guardar</button>' +
+            '<button class="btn-texto dato-cancelar" type="button">Cancelar</button></div>';
+          var iN = celda.querySelector('.dato-nombre'), iC = celda.querySelector('.dato-correo');
+          iN.value = b.getAttribute('data-nombre') || '';
+          iC.value = b.getAttribute('data-correo') || '';
+          iC.focus();
+          celda.querySelector('.dato-cancelar').onclick = cargarEquipo;
+          celda.querySelector('.dato-ok').onclick = function () {
+            api('/usuarios/' + uid + '/datos', { method: 'PUT', body: { nombre: iN.value, correo: iC.value } })
+              .then(function (r) {
+                if (uid === String(usuarioActual.id)) { usuarioActual.correo = r.correo; usuarioActual.nombre = r.nombre; }
+                avisar('Datos de ' + r.nombre + ' actualizados. Entra con ' + r.correo + '.');
+                cargarEquipo();
+              })
+              .catch(function (e) { avisar(e.message || 'No se pudo cambiar el correo.', true); });
           };
         };
       });

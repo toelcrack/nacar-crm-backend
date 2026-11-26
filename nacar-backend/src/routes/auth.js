@@ -36,7 +36,12 @@ router.post('/logout', (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   const p = await permisosDe(req.usuario.id);
   if (!p) return res.status(401).json({ error: 'Tu cuenta está desactivada o ya no existe.' });
-  res.json(Object.assign({}, req.usuario, { acceso_taller: p.taller, acceso_agenda: p.agenda, es_supremo: await esSupremo(req.usuario.id) }));
+  let fresco = {};
+  try {
+    const f = await pool.query('SELECT nombre, correo FROM usuarios WHERE id = $1', [req.usuario.id]);
+    if (f.rows[0]) fresco = f.rows[0];
+  } catch (e) { /* si falla, queda lo del token */ }
+  res.json(Object.assign({}, req.usuario, fresco, { acceso_taller: p.taller, acceso_agenda: p.agenda, es_supremo: await esSupremo(req.usuario.id) }));
 });
 
 module.exports = router;

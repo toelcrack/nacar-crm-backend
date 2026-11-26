@@ -108,4 +108,35 @@ router.put('/:id/password', requireSupremo, async (req, res) => {
   res.json({ ok: true, nombre: r.rows[0].nombre });
 });
 
+// PUT /api/usuarios/:id/datos -> cambiar el correo (y/o el nombre) de CUALQUIER cuenta (solo el
+// administrador supremo). Body: { correo?, nombre? }. La persona entra con el correo nuevo.
+router.put('/:id/datos', requireSupremo, async (req, res) => {
+  const id = Number(req.params.id);
+  const b = req.body || {};
+  const correo = b.correo === undefined ? null : String(b.correo).trim().toLowerCase();
+  const nombre = b.nombre === undefined ? null : String(b.nombre).trim();
+  if (correo !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.status(400).json({ error: 'Escribe un correo válido.' });
+  }
+  if (nombre !== null && !nombre) {
+    return res.status(400).json({ error: 'El nombre no puede quedar vacío.' });
+  }
+  if (correo === null && nombre === null) {
+    return res.status(400).json({ error: 'No hay nada que cambiar.' });
+  }
+  try {
+    const r = await pool.query(
+      'UPDATE usuarios SET correo = COALESCE($1, correo), nombre = COALESCE($2, nombre) WHERE id = $3 RETURNING id, nombre, correo',
+      [correo, nombre, id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Cuenta no encontrada.' });
+    res.json({ ok: true, nombre: r.rows[0].nombre, correo: r.rows[0].correo });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'Ya existe otra cuenta con ese correo.' });
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo cambiar el correo.' });
+  }
+});
+
 module.exports = router;
