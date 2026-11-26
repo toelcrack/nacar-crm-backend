@@ -65,7 +65,7 @@ router.get('/', requireAcceso('agenda'), async (req, res) => {
     }
     const r = await pool.query(
       `SELECT c.id, c.bahia_id, c.fecha, c.hora_inicio, c.hora_fin, c.nota, c.atrasado,
-              c.ingresado_en, c.no_show, c.confirmada_cliente, c.respuesta_cliente,
+              c.ingresado_en, c.salida_en, c.listo_en, c.no_show, c.confirmada_cliente, c.respuesta_cliente,
               b.nombre AS bahia_nombre,
               v.id AS vehiculo_id, v.patente, v.marca, v.modelo,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre, cl.telefono AS cliente_telefono
@@ -158,7 +158,7 @@ router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
     if (ingresarAhora) {
       const ahora = await pool.query(
         `INSERT INTO citas (bahia_id, vehiculo_id, fecha, hora_inicio, hora_fin, ingresado_en, nota, creado_por)
-         VALUES ($1, $2, (now() AT TIME ZONE 'America/Santiago')::date, (now() AT TIME ZONE 'America/Santiago')::time,
+         VALUES ($1, $2, (now() AT TIME ZONE 'America/Santiago')::date, date_trunc('minute', now() AT TIME ZONE 'America/Santiago')::time,
                  NULL, now(), $3, $4) RETURNING id`,
         [bahiaId, vehiculoId, nota || null, req.usuario ? req.usuario.id : null]
       );

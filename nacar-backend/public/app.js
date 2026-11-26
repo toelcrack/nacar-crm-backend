@@ -1145,9 +1145,22 @@
     var HORARIO = { 1: [540, 1110], 2: [540, 1110], 3: [540, 1110], 4: [540, 1110], 5: [540, 1080], 6: [600, 840] };
     var hor = HORARIO[dow] || [600, 840]; // domingo: cerrado, rango corto por defecto
     var ini = hor[0], fin = hor[1];
+    var ahoraD = new Date();
+    var minAhora = ahoraD.getHours() * 60 + ahoraD.getMinutes();
+    // Fin real del bloque: un auto que está en el elevador crece hasta "ahora"; uno ya entregado
+    // sin hora de término agendada se cierra a la hora en que salió (así un auto que llegó sin cita
+    // queda reflejado en la agenda con lo que realmente estuvo).
+    function finDeCita(c, a) {
+      var prog = c.hora_fin ? minutosHora(c.hora_fin) : null;
+      var fin;
+      if (c.ingresado_en && !c.salida_en) fin = Math.max(prog || 0, minAhora, a + 40);
+      else if (c.ingresado_en && c.salida_en && prog === null) fin = Math.max(minutosHora(horaDeTimestamp(c.salida_en)), a + 40);
+      else fin = prog !== null ? prog : a + 60;
+      return Math.min(fin, 24 * 60);
+    }
     delDia.forEach(function (c) {
       var a = minutosHora(c.hora_inicio);
-      var b = c.hora_fin ? minutosHora(c.hora_fin) : a + 60;
+      var b = finDeCita(c, a);
       if (a < ini) ini = Math.floor(a / 60) * 60;
       if (b > fin) fin = Math.min(24 * 60, Math.ceil(b / 60) * 60);
     });
@@ -1172,7 +1185,7 @@
       var fines = [];
       var items = lista.map(function (c) {
         var a = minutosHora(c.hora_inicio);
-        var b = c.hora_fin ? minutosHora(c.hora_fin) : a + 60;
+        var b = finDeCita(c, a);
         if (b - a < 40) b = a + 40;
         var lane = 0;
         while (fines[lane] !== undefined && fines[lane] > a) lane++;
@@ -1187,11 +1200,12 @@
       items.forEach(function (it) {
         var c = it.c;
         var ancho = 100 / nLanes;
-        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') +
+        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') +
           ' style="top:' + ((it.a - ini) * PX) + 'px;height:' + ((it.b - it.a) * PX - 2) + 'px;left:calc(' + (it.lane * ancho) + '% + 2px);width:calc(' + ancho + '% - 4px)">' +
           (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
-          '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
+          '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : (c.salida_en ? '–' + horaDeTimestamp(c.salida_en) : '')) + '</span>' +
           '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
+          (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller</span>' : (c.ingresado_en && c.salida_en ? '<span class="cita-estado">✓ Entregado</span>' : '')) +
           (c.nota ? '<span class="cita-nota-prev">' + escapeHtml(c.nota) + '</span>' : '') +
           '</button>';
       });
@@ -1332,7 +1346,7 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
               (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
               '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
@@ -3126,6 +3140,13 @@
       if (!c.querySelector('.rs-wrap')) c.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar el resumen.') + '</p>';
     });
   }
+  // La agenda también se actualiza sola (cada 30 s) si la estás mirando y no hay una ventana abierta.
+  setInterval(function () {
+    var v = document.getElementById('vista-agenda');
+    var m = document.getElementById('modal-cita');
+    if (v && !v.hidden && !document.hidden && usuarioActual && !(m && !m.hidden)) cargarCalendarioSemana();
+  }, 30000);
+
   // Se refresca solo cada minuto mientras estás mirando el resumen.
   setInterval(function () {
     var v = document.getElementById('vista-resumen');

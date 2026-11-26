@@ -93,7 +93,7 @@ router.post('/:id/asignar', requireAcceso('taller'), async (req, res) => {
        VALUES (
          $1, $2,
          (now() AT TIME ZONE 'America/Santiago')::date,
-         (now() AT TIME ZONE 'America/Santiago')::time,
+         date_trunc('minute', now() AT TIME ZONE 'America/Santiago')::time,
          NULL, now(), $3, $4
        ) RETURNING id`,
       [id, v.rows[0].id, nota || null, req.usuario ? req.usuario.id : null]
