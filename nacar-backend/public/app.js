@@ -165,7 +165,14 @@
     // Los accesos directos de la app (mantener apretado el ícono) abren /#agenda o /#taller.
     var destino = String(location.hash || '').replace('#', '');
     var btnDestino = document.getElementById('btn-' + destino);
-    mostrarVista(destino && VISTAS.indexOf(destino) >= 0 && btnDestino && !btnDestino.hidden ? destino : 'vehiculos');
+    // Los mecánicos (cuentas no administradoras con Taller) arrancan en Taller y lo ven primero en
+    // la barra de pestañas; el resto sigue empezando en Vehículos.
+    var esMecanico = usuario.rol !== 'admin' && tieneAcceso('taller');
+    if (esMecanico) {
+      var btnT = document.getElementById('btn-taller');
+      if (btnT.parentNode && btnT.parentNode.firstElementChild !== btnT) btnT.parentNode.insertBefore(btnT, btnT.parentNode.firstElementChild);
+    }
+    mostrarVista(destino && VISTAS.indexOf(destino) >= 0 && btnDestino && !btnDestino.hidden ? destino : (esMecanico ? 'taller' : 'vehiculos'));
   }
   function mostrarLogin() {
     usuarioActual = null;
