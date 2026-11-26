@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Instalar CRM Nácar</title>
+<meta name="theme-color" content="#D9642E" />
+<link rel="icon" type="image/png" href="/favicon.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<style>
+  :root{--orange:#D9642E;--ink:#1A1310;--soft:#6B5D52;--bg:#FFF4EC;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--ink);
+    background:linear-gradient(180deg,var(--bg),#fff 420px);padding:max(20px,env(safe-area-inset-top)) 18px 40px;}
+  main{max-width:560px;margin:0 auto;}
+  .logo{display:flex;align-items:center;gap:12px;margin:6px 0 22px;}
+  .logo img{width:48px;height:48px;border-radius:12px;}
+  h1{font-size:24px;margin:0;line-height:1.2;}
+  p{line-height:1.5;color:var(--soft);margin:6px 0 0;}
+  .link{display:block;background:#fff;border:2px solid var(--orange);border-radius:16px;padding:18px 14px;text-align:center;
+    font-size:clamp(18px,5.6vw,26px);font-weight:700;color:var(--ink);text-decoration:none;word-break:break-all;margin:18px 0 10px;}
+  button.copiar{width:100%;background:var(--orange);color:#fff;border:0;border-radius:14px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;}
+  .qr{background:#fff;border:1px solid rgba(26,19,16,.1);border-radius:16px;padding:14px;margin:22px auto 0;width:min(240px,70vw);}
+  .qr svg{display:block;width:100%;height:auto;}
+  .qr small{display:block;text-align:center;color:var(--soft);margin-top:6px;font-size:12px;}
+  h2{font-size:18px;margin:30px 0 8px;}
+  ol{padding-left:22px;margin:8px 0 0;line-height:1.7;}
+  li b{color:var(--ink);}
+  .tarjeta{background:#fff;border:1px solid rgba(26,19,16,.1);border-radius:16px;padding:16px 18px;margin-top:12px;}
+  .tarjeta h3{margin:0 0 4px;font-size:16px;}
+  .nota{font-size:13px;color:var(--soft);margin-top:20px;}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><img src="/icon-192.png" alt="Nácar" /><h1>CRM Nácar<br><span style="font-size:15px;font-weight:500;color:var(--soft)">Taller Nácar Automotriz</span></h1></div>
+
+  <p>Entra desde el navegador del celular con este link y déjala en tu pantalla de inicio como una app más.</p>
+  <a class="link" id="url" href="https://crm.tallernacarautomotriz.cl">crm.tallernacarautomotriz.cl</a>
+  <button class="copiar" id="copiar" type="button">Copiar link</button>
+
+  <div class="qr"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33 33" shape-rendering="crispEdges"><path class="qrline" stroke="#1a1310" d="M2 2.5h7m2 0h1m2 0h1m2 0h1m3 0h2m1 0h7m-29 1h1m5 0h1m2 0h1m1 0h1m3 0h1m1 0h2m1 0h1m1 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h1m2 0h1m3 0h2m1 0h1m3 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h1m1 0h2m5 0h1m4 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h2m2 0h1m1 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h2m1 0h6m1 0h1m1 0h1m1 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-21 1h1m1 0h4m5 0h1m-20 1h1m1 0h5m5 0h1m1 0h2m1 0h1m4 0h5m-27 1h1m2 0h1m1 0h1m6 0h1m3 0h1m2 0h2m1 0h3m3 0h1m-29 1h1m1 0h5m2 0h1m5 0h1m4 0h1m-20 1h2m1 0h2m1 0h1m2 0h2m2 0h1m1 0h1m4 0h1m1 0h1m1 0h1m1 0h1m-28 1h1m1 0h2m2 0h2m3 0h2m4 0h1m7 0h2m-27 1h1m1 0h1m1 0h1m4 0h1m2 0h3m4 0h4m1 0h1m3 0h1m-27 1h1m3 0h3m2 0h1m1 0h3m5 0h1m1 0h4m-26 1h1m3 0h1m3 0h1m3 0h1m4 0h3m2 0h1m3 0h1m-28 1h1m1 0h1m2 0h3m2 0h1m3 0h1m1 0h2m1 0h1m5 0h2m-27 1h3m1 0h2m2 0h2m2 0h1m3 0h9m1 0h1m1 0h1m-29 1h1m1 0h2m2 0h1m1 0h1m3 0h1m2 0h3m4 0h1m3 0h1m-27 1h1m1 0h4m1 0h2m2 0h1m2 0h2m3 0h1m1 0h1m2 0h1m2 0h1m-28 1h1m2 0h2m1 0h3m1 0h3m4 0h1m2 0h5m1 0h3m-21 1h2m1 0h4m1 0h5m3 0h5m-29 1h7m5 0h4m3 0h2m1 0h1m1 0h3m-27 1h1m5 0h1m1 0h1m2 0h1m1 0h1m5 0h2m3 0h1m2 0h1m-28 1h1m1 0h3m1 0h1m1 0h1m1 0h3m1 0h4m2 0h5m1 0h1m-27 1h1m1 0h3m1 0h1m1 0h1m2 0h2m3 0h4m3 0h1m1 0h4m-29 1h1m1 0h3m1 0h1m1 0h1m1 0h1m1 0h4m1 0h1m1 0h1m1 0h7m-28 1h1m5 0h1m3 0h1m3 0h3m3 0h1m1 0h2m1 0h1m1 0h1m-28 1h7m1 0h2m1 0h2m2 0h3m1 0h1m1 0h1m2 0h1m1 0h1"/></svg><small>Apunta la cámara del celular aquí</small></div>
+
+  <h2>Cómo dejarla como app</h2>
+  <div class="tarjeta">
+    <h3>iPhone (usa Safari)</h3>
+    <ol>
+      <li>Abre el link en <b>Safari</b> (no en Chrome ni dentro de WhatsApp).</li>
+      <li>Toca el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).</li>
+      <li>Baja y toca <b>Agregar a inicio</b>.</li>
+      <li>Toca <b>Agregar</b>. Listo: aparece el ícono de Nácar.</li>
+    </ol>
+  </div>
+  <div class="tarjeta">
+    <h3>Android (usa Chrome)</h3>
+    <ol>
+      <li>Abre el link en <b>Chrome</b>.</li>
+      <li>Toca el menú <b>⋮</b> (arriba a la derecha).</li>
+      <li>Toca <b>Instalar app</b> (o <b>Agregar a la pantalla principal</b>).</li>
+      <li>Confirma con <b>Instalar</b>. El ícono queda junto a tus otras apps.</li>
+    </ol>
+  </div>
+  <p class="nota">No se descarga nada de la App Store ni de Google Play. Se actualiza sola cada vez que mejoramos el CRM. Si algo no te funciona, avísale al dueño del taller.</p>
+</main>
+<script>
+  document.getElementById('copiar').onclick = function () {
+    var b = this, t = 'https://crm.tallernacarautomotriz.cl';
+    function ok() { b.textContent = 'Link copiado'; setTimeout(function () { b.textContent = 'Copiar link'; }, 2000); }
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(ok, function () {});
+    else { var i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); ok(); }
+  };
+</script>
+</body>
+</html>

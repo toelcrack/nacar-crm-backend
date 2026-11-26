@@ -44,6 +44,10 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
     if (/\.(js|html)$/.test(file)) res.setHeader('Cache-Control', 'no-cache');
   },
 }));
+// Página pública con el link fácil, el QR y los pasos para dejar el CRM como app en el celular.
+app.get('/instalar', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'instalar.html'));
+});
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });

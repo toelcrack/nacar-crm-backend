@@ -2,10 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#D9642E" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Nácar CRM" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="format-detection" content="telephone=no" />
+<link rel="manifest" href="/manifest.webmanifest" />
 <title>CRM Nácar</title>
 <link rel="icon" type="image/png" href="/favicon.png" />
-<link rel="apple-touch-icon" href="/favicon.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -392,6 +399,40 @@
     .tarea-diagnostico textarea{font-size:16px;}
     .foto-mini,.foto-agregar-btn{width:72px;height:72px;}
   }
+
+  /* ---------- App en el celular (PWA) ---------- */
+  html{-webkit-text-size-adjust:100%;}
+  body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
+    padding-bottom:calc(64px + env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent;}
+  header{padding-top:max(22px,env(safe-area-inset-top));}
+  button,.tab-btn,.btn{touch-action:manipulation;}
+  .btn-instalar{background:var(--orange);color:#fff;border:none;border-radius:999px;padding:8px 14px;font-weight:600;
+    font-size:13px;cursor:pointer;white-space:nowrap;}
+  .btn-instalar[hidden]{display:none;}
+  .instalar-ayuda{margin:14px 0 0;font-size:12px;color:var(--gray-2);text-align:center;line-height:1.5;}
+  .instalar-ayuda a{color:var(--orange-light);font-weight:600;}
+  @media(max-width:700px){
+    /* iOS hace zoom al tocar un campo con letra menor a 16px */
+    input,select,textarea{font-size:16px !important;}
+    header{padding:max(12px,env(safe-area-inset-top)) 14px 12px;gap:8px;}
+    #logo-header{height:28px !important;}
+    .subtitulo{display:none;}
+    .usuario-bar{gap:8px;font-size:12px;}
+    .usuario-bar .chip-rol{display:none;}
+    .tabs-nav{padding:0 10px;gap:0;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+    .tabs-nav::-webkit-scrollbar{display:none;}
+    .tab-btn{padding:14px 2px;margin-right:18px;font-size:15px;}
+    .vista-titulo{margin-top:6px;}
+    .btn,.btn-cal-nav{min-height:42px;}
+    .calendario-header{gap:8px;}
+    .calendario-rango{min-width:0;font-size:14px;}
+    .td{min-width:0;}
+    .td-dia-btn{min-width:44px;padding:6px 2px;font-size:11px;}
+    .td-dia-btn small{display:none;}
+    .modal-fondo{padding:0;align-items:flex-end;}
+    .modal-caja{max-width:none;max-height:94vh;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));}
+  }
+  @media(display-mode:standalone){.btn-instalar,.instalar-ayuda{display:none !important;}}
 </style>
 </head>
 <body>
@@ -405,6 +446,7 @@
     <div class="campo"><label for="login-correo">Correo</label><input id="login-correo" type="email" autocomplete="username" /></div>
     <div class="campo"><label for="login-password">Contraseña</label><input id="login-password" type="password" autocomplete="current-password" /></div>
     <button class="btn btn-primario" id="btn-login">Iniciar sesión</button>
+    <p class="instalar-ayuda"><a href="/instalar">¿Cómo tenerla como app en tu celular?</a></p>
   </div>
 </div>
 
@@ -417,6 +459,7 @@
     <div class="usuario-bar">
       <span>Hola, <strong id="usuario-nombre"></strong></span>
       <span id="usuario-rol-chip" class="chip-rol"></span>
+      <button class="btn-instalar" id="btn-instalar" type="button" hidden>Instalar app</button>
       <button class="btn-texto" id="btn-logout">Cerrar sesión</button>
     </div>
   </header>

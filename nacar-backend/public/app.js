@@ -155,7 +155,10 @@
     document.getElementById('btn-configuracion').hidden = usuario.rol !== 'admin';
     cargarListasConfig().catch(function () {}); // si falla, los selects igual permiten "+ Agregar nueva..."
     cargarVehiculos();
-    mostrarVista('vehiculos');
+    // Los accesos directos de la app (mantener apretado el ícono) abren /#agenda o /#taller.
+    var destino = String(location.hash || '').replace('#', '');
+    var btnDestino = document.getElementById('btn-' + destino);
+    mostrarVista(destino && VISTAS.indexOf(destino) >= 0 && btnDestino && !btnDestino.hidden ? destino : 'vehiculos');
   }
   function mostrarLogin() {
     usuarioActual = null;
@@ -2692,5 +2695,31 @@
   };
 
   // ---------- Arranque ----------
+  // ---------- App instalable (PWA) ----------
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+  }
+  var promptInstalar = null;
+  var btnInstalar = document.getElementById('btn-instalar');
+  var yaEsApp = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  var esCelular = /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  if (btnInstalar && !yaEsApp) {
+    if (esCelular) btnInstalar.hidden = false; // en iPhone no hay aviso automático: se muestran los pasos
+    window.addEventListener('beforeinstallprompt', function (ev) {
+      ev.preventDefault();
+      promptInstalar = ev;
+      btnInstalar.hidden = false;
+    });
+    btnInstalar.onclick = function () {
+      if (promptInstalar) {
+        promptInstalar.prompt();
+        promptInstalar.userChoice.then(function () { promptInstalar = null; btnInstalar.hidden = !esCelular; });
+      } else {
+        window.location.href = '/instalar';
+      }
+    };
+    window.addEventListener('appinstalled', function () { btnInstalar.hidden = true; });
+  }
+
   api('/auth/me').then(mostrarApp).catch(mostrarLogin);
 })();
