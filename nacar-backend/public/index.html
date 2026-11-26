@@ -448,6 +448,7 @@
     <div id="aviso-login" class="aviso"></div>
     <div class="campo"><label for="login-correo">Correo</label><input id="login-correo" type="email" autocomplete="username" /></div>
     <div class="campo"><label for="login-password">Contraseña</label><input id="login-password" type="password" autocomplete="current-password" /></div>
+    <label class="check-item" style="margin:2px 0 8px;min-width:0"><input type="checkbox" id="login-recordar" checked /> Mantener la sesión iniciada en este equipo</label>
     <button class="btn btn-primario" id="btn-login">Iniciar sesión</button>
     <p class="instalar-ayuda"><a href="/instalar">¿Cómo tenerla como app en tu celular?</a></p>
   </div>
@@ -581,7 +582,9 @@
       <p class="campo-label-suelto">A qué secciones puede entrar (los administradores siempre entran a todo)</p>
       <div class="campo" style="display:flex;gap:18px;flex-wrap:wrap">
         <label style="display:flex;gap:6px;align-items:center"><input id="eq-acc-taller" type="checkbox" checked /> Taller</label>
-        <label style="display:flex;gap:6px;align-items:center"><input id="eq-acc-agenda" type="checkbox" checked /> Agenda</label>
+        <label style="display:flex;gap:6px;align-items:center">Agenda
+          <select id="eq-acc-agenda"><option value="editar">Ver y editar</option><option value="ver">Solo ver</option><option value="no">Sin acceso</option></select>
+        </label>
       </div>
       <div class="campo"><label for="eq-password">Contraseña inicial</label><input id="eq-password" type="text" placeholder="Mínimo 6 caracteres" /></div>
       <div class="acciones-form">
@@ -630,6 +633,7 @@
     <div class="campo" id="cita-campo-patente"><label for="cita-patente">Patente</label>
       <input id="cita-patente" list="cita-dl-patente" type="text" placeholder="AB1234" style="text-transform:uppercase" />
       <datalist id="cita-dl-patente"></datalist>
+      <div id="cita-patente-hint" class="bahia-cliente" style="margin-top:6px" hidden></div>
     </div>
     <div id="cita-vehiculo-txt" class="bahia-cliente" style="margin-bottom:10px" hidden></div>
     <button class="btn-texto" id="cita-toggle-nuevo" type="button" style="margin:-4px 0 10px" hidden>+ Patente nueva — completar datos del auto</button>

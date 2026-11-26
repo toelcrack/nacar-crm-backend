@@ -21,10 +21,10 @@ router.use(requireAuth, requireAdmin);
 router.get('/', async (req, res) => {
   let r;
   try {
-    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, es_supremo, creado_en FROM usuarios ORDER BY es_supremo DESC, creado_en ASC');
+    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, agenda_solo_ver, es_supremo, creado_en FROM usuarios ORDER BY es_supremo DESC, creado_en ASC');
   } catch (e) {
     if (e.code !== '42703') throw e;
-    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, false AS es_supremo, creado_en FROM usuarios ORDER BY creado_en ASC');
+    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, false AS agenda_solo_ver, false AS es_supremo, creado_en FROM usuarios ORDER BY creado_en ASC');
   }
   res.json(r.rows);
 });
@@ -33,7 +33,10 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { nombre, correo, password, rol } = req.body || {};
   const accesoTaller = (req.body || {}).accesoTaller !== false;
-  const accesoAgenda = (req.body || {}).accesoAgenda !== false;
+  // agendaNivel: 'no' | 'ver' (solo mirar) | 'editar'. Compatible con accesoAgenda (booleano) de antes.
+  const nivelAg = (req.body || {}).agendaNivel || ((req.body || {}).accesoAgenda === false ? 'no' : 'editar');
+  const accesoAgenda = nivelAg !== 'no';
+  const agendaSoloVer = nivelAg === 'ver';
   if (!nombre || !correo || !password) {
     return res.status(400).json({ error: 'Nombre, correo y contraseña son obligatorios.' });
   }
@@ -44,9 +47,9 @@ router.post('/', async (req, res) => {
   const hash = await bcrypt.hash(password, 10);
   try {
     const r = await pool.query(
-      `INSERT INTO usuarios (nombre, correo, password_hash, rol, acceso_taller, acceso_agenda) VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, creado_en`,
-      [nombre, String(correo).trim().toLowerCase(), hash, rolFinal, accesoTaller, accesoAgenda]
+      `INSERT INTO usuarios (nombre, correo, password_hash, rol, acceso_taller, acceso_agenda, agenda_solo_ver) VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, agenda_solo_ver, creado_en`,
+      [nombre, String(correo).trim().toLowerCase(), hash, rolFinal, accesoTaller, accesoAgenda, agendaSoloVer]
     );
     res.status(201).json(r.rows[0]);
   } catch (e) {
@@ -82,12 +85,20 @@ router.put('/:id/activo', async (req, res) => {
 router.put('/:id/acceso', async (req, res) => {
   const id = Number(req.params.id);
   const b = req.body || {};
+  // agenda_nivel: 'no' (no la ve) | 'ver' (solo mirar) | 'editar' (ver y modificar)
+  let agendaAcceso = typeof b.acceso_agenda === 'boolean' ? b.acceso_agenda : null;
+  let agendaSoloVer = null;
+  if (['no', 'ver', 'editar'].includes(b.agenda_nivel)) {
+    agendaAcceso = b.agenda_nivel !== 'no';
+    agendaSoloVer = b.agenda_nivel === 'ver';
+  }
   const r = await pool.query(
     `UPDATE usuarios
-     SET acceso_taller = COALESCE($1, acceso_taller), acceso_agenda = COALESCE($2, acceso_agenda)
-     WHERE id = $3 AND rol <> 'admin'
-     RETURNING id, nombre, rol, acceso_taller, acceso_agenda`,
-    [typeof b.acceso_taller === 'boolean' ? b.acceso_taller : null, typeof b.acceso_agenda === 'boolean' ? b.acceso_agenda : null, id]
+     SET acceso_taller = COALESCE($1, acceso_taller), acceso_agenda = COALESCE($2, acceso_agenda),
+         agenda_solo_ver = COALESCE($3, agenda_solo_ver)
+     WHERE id = $4 AND rol <> 'admin'
+     RETURNING id, nombre, rol, acceso_taller, acceso_agenda, agenda_solo_ver`,
+    [typeof b.acceso_taller === 'boolean' ? b.acceso_taller : null, agendaAcceso, agendaSoloVer, id]
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Cuenta no encontrada, o es administrador (siempre tiene todo el acceso).' });
   res.json(r.rows[0]);

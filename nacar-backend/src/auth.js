@@ -9,23 +9,28 @@ if (!JWT_SECRET) {
 }
 
 const COOKIE_NAME = 'nacar_token';
-const EXPIRA_EN = '30d';
+// "Mantener sesión iniciada": con la casilla marcada la sesión dura 180 días y se renueva sola
+// cada vez que se abre la app (así quien la usa seguido nunca vuelve a ver el login). Sin marcar,
+// es una cookie de sesión (se pierde al cerrar el navegador) y el token vale 1 día.
+const EXPIRA_RECORDAR = '180d';
+const EXPIRA_NORMAL = '1d';
 
-function firmarToken(usuario) {
+function firmarToken(usuario, recordar = true) {
   return jwt.sign(
-    { sub: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol },
+    { sub: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol, rec: recordar ? 1 : 0 },
     JWT_SECRET,
-    { expiresIn: EXPIRA_EN }
+    { expiresIn: recordar ? EXPIRA_RECORDAR : EXPIRA_NORMAL }
   );
 }
 
-function setCookieSesion(res, token) {
-  res.cookie(COOKIE_NAME, token, {
+function setCookieSesion(res, token, recordar = true) {
+  const opciones = {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-  });
+  };
+  if (recordar) opciones.maxAge = 180 * 24 * 60 * 60 * 1000;
+  res.cookie(COOKIE_NAME, token, opciones);
 }
 
 function borrarCookieSesion(res) {
@@ -38,6 +43,8 @@ function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     req.usuario = { id: payload.sub, nombre: payload.nombre, correo: payload.correo, rol: payload.rol };
+    // Los tokens anteriores a esta opción (sin 'rec') se tratan como "recordar".
+    req.recordar = payload.rec === undefined ? true : !!payload.rec;
     next();
   } catch (e) {
     return res.status(401).json({ error: 'Sesión inválida o vencida, inicia sesión de nuevo.' });
@@ -57,17 +64,28 @@ function requireAdmin(req, res, next) {
 async function permisosDe(usuarioId) {
   let r;
   try {
-    r = await pool.query('SELECT rol, activo, acceso_taller, acceso_agenda FROM usuarios WHERE id = $1', [usuarioId]);
+    r = await pool.query('SELECT rol, activo, acceso_taller, acceso_agenda, agenda_solo_ver FROM usuarios WHERE id = $1', [usuarioId]);
   } catch (e) {
-    // Columnas todavía no creadas (el deploy llegó antes que la migración): todos con acceso,
-    // como era antes de existir los permisos, en vez de dejar a todos sin poder entrar.
     if (e.code !== '42703') throw e;
-    r = await pool.query('SELECT rol, activo, true AS acceso_taller, true AS acceso_agenda FROM usuarios WHERE id = $1', [usuarioId]);
+    // Falta la columna agenda_solo_ver (el deploy llegó antes que la migración): sin ese límite.
+    try {
+      r = await pool.query('SELECT rol, activo, acceso_taller, acceso_agenda, false AS agenda_solo_ver FROM usuarios WHERE id = $1', [usuarioId]);
+    } catch (e2) {
+      // Columnas todavía no creadas: todos con acceso, como era antes de existir los permisos,
+      // en vez de dejar a todos sin poder entrar.
+      if (e2.code !== '42703') throw e2;
+      r = await pool.query('SELECT rol, activo, true AS acceso_taller, true AS acceso_agenda, false AS agenda_solo_ver FROM usuarios WHERE id = $1', [usuarioId]);
+    }
   }
   const u = r.rows[0];
   if (!u || !u.activo) return null;
   const admin = u.rol === 'admin';
-  return { taller: admin || u.acceso_taller, agenda: admin || u.acceso_agenda };
+  return {
+    taller: admin || u.acceso_taller,
+    agenda: admin || u.acceso_agenda,
+    // 'agenda_editar': puede crear/mover/cancelar citas (los administradores siempre).
+    agenda_editar: admin || (u.acceso_agenda && !u.agenda_solo_ver),
+  };
 }
 
 function requireAcceso(...secciones) {
@@ -76,6 +94,9 @@ function requireAcceso(...secciones) {
       const p = req.usuario ? await permisosDe(req.usuario.id) : null;
       if (!p) return res.status(401).json({ error: 'Sesión inválida, inicia sesión de nuevo.' });
       if (!secciones.some((s) => p[s])) {
+        if (secciones.length === 1 && secciones[0] === 'agenda_editar') {
+          return res.status(403).json({ error: 'Tu cuenta puede ver la agenda pero no modificarla. Pídele al administrador que te dé permiso para editarla.' });
+        }
         const nombre = secciones.length === 1 ? 'la sección ' + (secciones[0] === 'taller' ? 'Taller' : 'Agenda') : 'esta sección';
         return res.status(403).json({ error: 'No tienes acceso a ' + nombre + '. Pídele al administrador que te lo active.' });
       }

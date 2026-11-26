@@ -279,3 +279,7 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_agenda BOOLEAN NOT NULL DEF
 -- Administrador supremo (26-nov-2026): el dueño. Es el único que puede cambiar la clave de
 -- cualquier cuenta; los demás administradores no pueden desactivarlo ni cambiarle los accesos.
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS es_supremo BOOLEAN NOT NULL DEFAULT false;
+
+-- Agenda solo para mirar (26-nov-2026): la cuenta ve la agenda pero no puede crear, mover ni cancelar citas.
+-- Se combina con acceso_agenda: sin acceso = no la ve; con acceso y agenda_solo_ver = solo la mira.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS agenda_solo_ver BOOLEAN NOT NULL DEFAULT false;

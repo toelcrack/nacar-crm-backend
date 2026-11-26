@@ -98,7 +98,7 @@ router.get('/', requireAcceso('agenda'), async (req, res) => {
 // Si el vehículo queda con un cliente con correo, se le manda un correo de confirmación desde
 // taller@nacarautomotriz.cl (ver src/correo.js) — nunca bloquea ni hace fallar el agendamiento
 // si el correo no está configurado o falla el envío.
-router.post('/', requireAcceso('agenda'), async (req, res) => {
+router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
   const body = req.body || {};
   const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
   const patente = String(body.patente || '').trim().toUpperCase();
@@ -276,7 +276,7 @@ router.post('/:id/ingresar', requireAcceso('taller'), async (req, res) => {
 // "Cancelar cita" (que borra el registro por completo, para corregir un error): esto deja la
 // cita guardada con no_show=true, solo deja de contar como "pendiente" (útil a futuro para
 // medir inasistencia). Solo tiene sentido para una cita que todavía no había entrado.
-router.post('/:id/no-show', requireAcceso('agenda'), async (req, res) => {
+router.post('/:id/no-show', requireAcceso('agenda_editar'), async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query(
@@ -298,7 +298,7 @@ router.post('/:id/no-show', requireAcceso('agenda'), async (req, res) => {
 // PUT /api/citas/:id -> edita fecha/hora/bahía/nota (el estado de atraso/problema ya NO se
 // toca aquí — se maneja posteando un comentario en el chat de la cita, ver más abajo).
 // No permite cambiar el vehículo: si se agendó con la patente equivocada, cancela y crea otra.
-router.put('/:id', requireAcceso('agenda'), async (req, res) => {
+router.put('/:id', requireAcceso('agenda_editar'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
   const bahiaId = body.bahia_id ? Number(body.bahia_id) : null;
@@ -339,7 +339,7 @@ router.put('/:id', requireAcceso('agenda'), async (req, res) => {
 // otro elevador, sin tocar la hora ni la nota. Body: { fecha, bahia_id }. Una cita que ya
 // entró al taller (ingresado_en) o que fue marcada "no vino" no se mueve. Si cambia el día, se
 // borra la confirmación del cliente (confirmó OTRA fecha) y hay que volver a avisarle.
-router.patch('/:id/mover', requireAcceso('agenda'), async (req, res) => {
+router.patch('/:id/mover', requireAcceso('agenda_editar'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
   const fecha = String(body.fecha || '').trim();
@@ -387,7 +387,7 @@ router.patch('/:id/mover', requireAcceso('agenda'), async (req, res) => {
 // PATCH /api/citas/:id/dueno -> asocia el auto de esta cita a un cliente (dueño) que ya existe,
 // para que el aviso por WhatsApp use su número. Body: { clienteId }. Lo puede hacer cualquier
 // usuario logueado (Andy agenda); cambiar el dueño de un auto vendido sigue siendo solo admin.
-router.patch('/:id/dueno', requireAcceso('agenda'), async (req, res) => {
+router.patch('/:id/dueno', requireAcceso('agenda_editar'), async (req, res) => {
   const clienteId = Number((req.body || {}).clienteId);
   if (!clienteId) return res.status(400).json({ error: 'Elige el dueño.' });
   try {
@@ -494,7 +494,7 @@ router.get('/:id', requireAcceso('taller', 'agenda'), async (req, res) => {
 
 // PATCH /api/citas/:id/confirmacion -> Andy marca (o desmarca) que el cliente confirmó la hora
 // por WhatsApp. Body: { confirmada: true|false }.
-router.patch('/:id/confirmacion', requireAcceso('agenda'), async (req, res) => {
+router.patch('/:id/confirmacion', requireAcceso('agenda_editar'), async (req, res) => {
   try {
     const r = await pool.query(
       "UPDATE citas SET confirmada_cliente = $1, respuesta_cliente = CASE WHEN $1 THEN 'si' ELSE NULL END, actualizado_en = now() WHERE id = $2 RETURNING id, confirmada_cliente",
@@ -511,7 +511,7 @@ router.patch('/:id/confirmacion', requireAcceso('agenda'), async (req, res) => {
 
 // PATCH /api/citas/:id/telefono-cliente -> guarda el WhatsApp del cliente de esta cita (crea el
 // cliente si el auto no tenía uno). Body: { telefono }.
-router.patch('/:id/telefono-cliente', requireAcceso('agenda'), async (req, res) => {
+router.patch('/:id/telefono-cliente', requireAcceso('agenda_editar'), async (req, res) => {
   const telefono = String((req.body || {}).telefono || '').trim();
   if (!telefono) return res.status(400).json({ error: 'Escribe el número de WhatsApp.' });
   try {
@@ -600,7 +600,7 @@ router.patch('/:id/estado-taller', requireAcceso('taller'), async (req, res) => 
 
 // DELETE /api/citas/:id -> cancela la cita agendada (no borra nada del historial del auto,
 // esto es solo el calendario del taller).
-router.delete('/:id', requireAcceso('agenda'), async (req, res) => {
+router.delete('/:id', requireAcceso('agenda_editar'), async (req, res) => {
   const id = Number(req.params.id);
   try {
     const r = await pool.query('DELETE FROM citas WHERE id = $1 RETURNING id', [id]);

@@ -141,6 +141,13 @@
     return !!usuarioActual && (usuarioActual.rol === 'admin' || !!usuarioActual['acceso_' + seccion]);
   }
 
+  // ¿Puede crear/mover/cancelar citas? (cuentas con la agenda en "solo ver" no; admins siempre)
+  function puedeEditarAgenda() {
+    if (!usuarioActual) return false;
+    if (usuarioActual.rol === 'admin') return true;
+    return usuarioActual.agenda_editar !== undefined ? !!usuarioActual.agenda_editar : tieneAcceso('agenda');
+  }
+
   function mostrarApp(usuario) {
     usuarioActual = usuario;
     document.getElementById('pantalla-login').hidden = true;
@@ -195,7 +202,7 @@
     var correo = document.getElementById('login-correo').value.trim();
     var password = document.getElementById('login-password').value;
     if (!correo || !password) { avisarLogin('Escribe tu correo y tu contraseña.'); return; }
-    api('/auth/login', { method: 'POST', body: { correo: correo, password: password } })
+    api('/auth/login', { method: 'POST', body: { correo: correo, password: password, recordar: document.getElementById('login-recordar').checked } })
       .then(function (u) { mostrarApp(u); })
       .catch(function (e) { avisarLogin(e.message || 'No se pudo iniciar sesión.'); });
   }
@@ -1031,7 +1038,7 @@
       items.forEach(function (it) {
         var c = it.c;
         var ancho = 100 / nLanes;
-        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show) ? '' : ' draggable="true"') +
+        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') +
           ' style="top:' + ((it.a - ini) * PX) + 'px;height:' + ((it.b - it.a) * PX - 2) + 'px;left:calc(' + (it.lane * ancho) + '% + 2px);width:calc(' + ancho + '% - 4px)">' +
           (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
           '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
@@ -1117,6 +1124,7 @@
       // Click en un espacio vacío: nueva cita a esa hora en ese elevador.
       colEl.addEventListener('click', function (ev) {
         if (ev.target.closest('.cita-chip')) return;
+        if (!puedeEditarAgenda()) return;
         var h = hhmm(Math.floor(minutosDesdeY(colEl, ev.clientY, 0) / 30) * 30);
         var bid = colEl.getAttribute('data-bahia-id');
         abrirModalCita('nueva', {
@@ -1175,7 +1183,7 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show) ? '' : ' draggable="true"') + '>' +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
               (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
               '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
@@ -1184,7 +1192,7 @@
           }).join('');
           html += '<div class="cal-celda' + (d.hoy ? ' hoy-col' : '') + '" data-fecha="' + d.key + '" data-bahia-id="' + b.id + '">' +
             chips +
-            '<button type="button" class="btn-cal-agregar" data-fecha="' + d.key + '" data-bahia-id="' + b.id + '" data-bahia-nombre="' + escapeHtml(b.nombre) + '">+ Agendar</button>' +
+            (puedeEditarAgenda() ? '<button type="button" class="btn-cal-agregar" data-fecha="' + d.key + '" data-bahia-id="' + b.id + '" data-bahia-nombre="' + escapeHtml(b.nombre) + '">+ Agendar</button>' : '') +
           '</div>';
         });
       });
@@ -1875,6 +1883,8 @@
       campoPatente.hidden = false;
       document.getElementById('cita-patente').value = '';
       document.getElementById('cita-dl-patente').innerHTML = '';
+      ultimaPatenteBuscadaCita = '';
+      document.getElementById('cita-patente-hint').hidden = true;
       vehiculoTxt.hidden = true;
       btnEliminar.hidden = true;
       btnNoLlego.hidden = true;
@@ -1935,6 +1945,20 @@
       document.getElementById('taller-guardar').textContent = datos.ingresado_en ? 'Guardar estado del auto' : 'Guardar trabajos';
       cargarEstadoTaller(datos.id);
     }
+    // Cuenta con la agenda en "solo ver": se muestra la cita pero no se puede cambiar nada.
+    var editable = puedeEditarAgenda();
+    ['cita-fecha', 'cita-hora-inicio', 'cita-hora-fin', 'cita-nota', 'cita-patente'].forEach(function (i) {
+      document.getElementById(i).disabled = !editable;
+    });
+    document.getElementById('cita-guardar').hidden = !editable;
+    if (!editable) {
+      btnEliminar.hidden = true;
+      btnNoLlego.hidden = true;
+      toggleNuevo.hidden = true;
+      bloqueNuevo.hidden = true;
+      document.getElementById('cita-wa-wrap').hidden = true;
+      document.getElementById('modal-cita-titulo').textContent = 'Cita (solo lectura)';
+    }
     modal.hidden = false;
   }
 
@@ -1983,7 +2007,7 @@
   function cargarWhatsappCita(citaId, ingresada) {
     var wrap = document.getElementById('cita-wa-wrap');
     waCita = null;
-    if (ingresada || !tieneAcceso('agenda')) { wrap.hidden = true; return; }
+    if (ingresada || !tieneAcceso('agenda') || !puedeEditarAgenda()) { wrap.hidden = true; return; }
     api('/citas/' + citaId).then(function (c) {
       if (String(document.getElementById('cita-id').value) !== String(citaId)) return;
       document.getElementById('cita-wa-dueno').textContent = c.cliente_nombre ? 'Dueño: ' + c.cliente_nombre : 'Este auto todavía no tiene dueño asociado.';
@@ -2141,10 +2165,49 @@
     }
   };
 
+  // Al escribir una patente completa en "Nueva cita", se busca sola (base del taller y, si no
+  // está, registro nacional) — igual que en mantenciones. Si el auto ya existe se muestra quién
+  // es; si es nuevo se abre el bloque de datos con marca/modelo/año ya rellenados. La consulta
+  // al registro nacional se hace una sola vez por patente tecleada (cuesta plata).
+  var ultimaPatenteBuscadaCita = '';
+  var timerBuscaPatenteCita = null;
+  function buscarPatenteCitaAuto(patente) {
+    if (citaModoActual !== 'nueva' || patente === ultimaPatenteBuscadaCita) return;
+    ultimaPatenteBuscadaCita = patente;
+    var hint = document.getElementById('cita-patente-hint');
+    hint.hidden = false;
+    hint.textContent = 'Buscando el auto...';
+    api('/vehiculos/buscar/' + encodeURIComponent(patente)).then(function (v) {
+      if (document.getElementById('cita-patente').value.trim().toUpperCase() !== patente) return; // ya cambió
+      var bloque = document.getElementById('cita-vehiculo-nuevo');
+      if (v._origen === 'base') {
+        bloque.hidden = true;
+        hint.textContent = 'Ya registrado: ' + [v.marca, v.modelo, v.anio].filter(Boolean).join(' ') + (v.cliente_nombre ? ' — ' + v.cliente_nombre : '');
+        return;
+      }
+      hint.textContent = 'Auto nuevo identificado: ' + [v.marca, v.modelo, v.anio].filter(Boolean).join(' ') + '. Completa el cliente abajo.';
+      bloque.hidden = false;
+      intentarAutocompletarVehiculoNuevo(patente);
+    }).catch(function () {
+      if (document.getElementById('cita-patente').value.trim().toUpperCase() !== patente) return;
+      // No está en ninguna parte: se abre el bloque para completarlo a mano.
+      document.getElementById('cita-vehiculo-nuevo').hidden = false;
+      hint.textContent = 'Patente nueva: no se pudo identificar sola, completa los datos del auto.';
+    });
+  }
+
   document.getElementById('cita-patente').addEventListener('input', function () {
     var inp = this;
     clearTimeout(timerCitaPatente);
     timerCitaPatente = setTimeout(function () { llenarDatalistCita(inp.value.trim()); }, 300);
+    clearTimeout(timerBuscaPatenteCita);
+    var p = inp.value.trim().toUpperCase();
+    if (p.length < 5) {
+      ultimaPatenteBuscadaCita = '';
+      document.getElementById('cita-patente-hint').hidden = true;
+      return;
+    }
+    timerBuscaPatenteCita = setTimeout(function () { buscarPatenteCitaAuto(p); }, 700);
   });
 
   function llenarDatalistCita(q) {
@@ -2489,7 +2552,10 @@
         var acc = u.rol === 'admin'
           ? 'Todo'
           : '<label style="margin-right:10px"><input type="checkbox" data-acc="taller" data-uid="' + u.id + '"' + (u.acceso_taller ? ' checked' : '') + ' /> Taller</label>' +
-            '<label><input type="checkbox" data-acc="agenda" data-uid="' + u.id + '"' + (u.acceso_agenda ? ' checked' : '') + ' /> Agenda</label>';
+            '<label>Agenda <select data-agenda-nivel data-uid="' + u.id + '">' +
+              '<option value="editar"' + (u.acceso_agenda && !u.agenda_solo_ver ? ' selected' : '') + '>Ver y editar</option>' +
+              '<option value="ver"' + (u.acceso_agenda && u.agenda_solo_ver ? ' selected' : '') + '>Solo ver</option>' +
+              '<option value="no"' + (!u.acceso_agenda ? ' selected' : '') + '>Sin acceso</option></select></label>';
         return '<tr>' +
           '<td>' + escapeHtml(u.nombre) + (u.es_supremo ? ' <span class="badge-supremo">Supremo</span>' : '') + '</td>' +
           '<td>' + escapeHtml(u.correo) + '</td>' +
@@ -2508,6 +2574,14 @@
       }).join('');
       document.getElementById('tabla-equipo-wrap').innerHTML =
         '<table class="usuarios"><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Acceso</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>';
+      document.querySelectorAll('#tabla-equipo-wrap select[data-agenda-nivel]').forEach(function (sel) {
+        var previo = sel.value;
+        sel.onchange = function () {
+          api('/usuarios/' + sel.getAttribute('data-uid') + '/acceso', { method: 'PUT', body: { agenda_nivel: sel.value } })
+            .then(function () { previo = sel.value; avisar('Acceso a la agenda actualizado.'); })
+            .catch(function (e) { sel.value = previo; avisar(e.message || 'No se pudo actualizar el acceso.', true); });
+        };
+      });
       document.querySelectorAll('#tabla-equipo-wrap input[data-acc]').forEach(function (chk) {
         chk.onchange = function () {
           var body = {};
@@ -2577,7 +2651,7 @@
       correo: document.getElementById('eq-correo').value.trim(),
       rol: document.getElementById('eq-rol').value,
       accesoTaller: document.getElementById('eq-acc-taller').checked,
-      accesoAgenda: document.getElementById('eq-acc-agenda').checked,
+      agendaNivel: document.getElementById('eq-acc-agenda').value,
       password: document.getElementById('eq-password').value,
     };
     api('/usuarios', { method: 'POST', body: body }).then(function () {
