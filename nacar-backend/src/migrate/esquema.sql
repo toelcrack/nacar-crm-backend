@@ -312,3 +312,11 @@ ALTER TABLE citas ADD COLUMN IF NOT EXISTS ingresado_por INTEGER REFERENCES usua
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS listo_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS salida_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
 ALTER TABLE citas ADD COLUMN IF NOT EXISTS respondida_en TIMESTAMPTZ;
+
+-- Medición de discos (mm de espesor) y fotos (26-nov-2026). Las fotos se guardan comprimidas
+-- como data URL, igual que las de las tareas. foto_tablero: testigos encendidos al ingresar.
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_del_mm TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_tra_mm TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_del_foto TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS discos_tra_foto TEXT;
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS foto_tablero TEXT;

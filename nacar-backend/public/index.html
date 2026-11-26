@@ -331,6 +331,8 @@
   .visor-volver{background:#fff;color:#1A1310;}
   .visor-imprimir{background:#D9642E;color:#fff;}
   #visor-doc iframe{flex:1;width:100%;border:0;background:#fff;}
+  .bh-tablero-lbl{display:flex;align-items:center;gap:6px;margin:10px 0 0;min-height:44px;font-size:14px;font-weight:600;color:#A93308;cursor:pointer;}
+  .bh-tablero-ok{color:#17592B;}
   .bh-sincita{display:block;width:100%;box-sizing:border-box;min-height:54px;margin-top:14px;border:2px dashed #D9642E;border-radius:14px;background:#FDF3EE;color:#8F3A12;font-size:16px;font-weight:700;cursor:pointer;}
   /* ---------- Resumen del día (administradores) ---------- */
   .rs-fondo{border-radius:24px;padding:20px 16px 28px;background:radial-gradient(130% 38% at 0% 0%,#FFAE78 0%,rgba(255,174,120,0) 70%),radial-gradient(100% 30% at 100% 6%,#FFD79B 0%,rgba(255,215,155,0) 70%),linear-gradient(180deg,#FBE6D6 0%,#F8EEE7 45%,#F6EFEA 100%);}
@@ -494,6 +496,11 @@
     background:rgba(26,19,16,0.04);border:1px solid rgba(26,19,16,0.1);
     color:var(--white-soft);border-radius:8px;padding:8px 10px;outline:none;}
   .tarea-diagnostico textarea:focus{border-color:var(--glass-border);}
+  .foto-mini.grande{width:120px;height:90px;}
+  .foto-agregar-btn.ancha{width:auto;height:auto;min-height:44px;padding:10px 16px;display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#A93308;cursor:pointer;}
+  .disco-medida{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin:6px 0 14px;}
+  .disco-mm-lbl{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;}
+  .disco-mm{width:130px;font-size:16px;padding:10px;border-radius:10px;border:1px solid rgba(26,19,16,0.2);background:#fff;}
   .fotos-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
   .foto-mini{position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid rgba(26,19,16,0.1);}
   .foto-mini img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -781,6 +788,9 @@
       <div class="campo"><label for="cita-fecha">Fecha</label><input id="cita-fecha" type="date" /></div>
       <div class="campo"><label for="cita-hora-inicio">Hora inicio</label><input id="cita-hora-inicio" type="time" /></div>
     </div>
+    <div class="campo" id="cita-fila-tablero" hidden><label for="cita-tablero">📷 Foto del tablero (testigos encendidos, opcional)</label>
+      <input id="cita-tablero" type="file" accept="image/*" />
+    </div>
     <div class="campo" id="cita-fila-hora-fin"><label for="cita-hora-fin">Hora término (opcional)</label><input id="cita-hora-fin" type="time" /></div>
     <div class="campo"><label for="cita-nota">Nota (qué se le va a hacer)</label>
       <input id="cita-nota" type="text" placeholder="Ej: cambio de aceite y filtros" />
@@ -819,6 +829,7 @@
       <div class="campo"><label for="taller-km">Kilometraje actual (opcional)</label>
         <input type="text" id="taller-km" placeholder="45.000" inputmode="numeric" />
       </div>
+      <div id="taller-tablero-wrap"></div>
       <p class="campo-label-suelto">¿Qué hay que revisar o cambiar? (aparece en la orden de trabajo)</p>
       <div class="tareas-chips" id="taller-tareas-chips"></div>
       <div id="taller-frenos-wrap"></div>

@@ -830,12 +830,22 @@
     });
   }
 
+  // Sube la foto del tablero en segundo plano (no frena el ingreso si falla).
+  function subirFotoTablero(citaId, archivo) {
+    comprimirFoto(archivo).then(function (src) {
+      if (!src) return;
+      return api('/citas/' + citaId + '/foto', { method: 'PATCH', body: { campo: 'tablero', valor: src } });
+    }).catch(function () { avisar('El auto entró, pero no se pudo guardar la foto del tablero.', true); });
+  }
   function ingresarCitaPendiente(bId) {
     var sel = document.getElementById('bahia-pendiente-' + bId);
     var citaId = sel ? sel.value : '';
     if (!citaId) { avisar('Elige qué cita pendiente va a entrar.', true); return; }
+    var inpTab = document.getElementById('bahia-tablero-' + bId);
+    var archivoTab = inpTab && inpTab.files && inpTab.files[0];
     api('/citas/' + citaId + '/ingresar', { method: 'POST', body: { bahia_id: bId } })
       .then(function () {
+        if (archivoTab) subirFotoTablero(citaId, archivoTab);
         avisar('Auto ingresado.');
         cargarBahias();
         cargarCalendarioSemana();
@@ -862,6 +872,7 @@
           '</div>' +
           '<div class="acciones-form"><button class="btn btn-primario" id="bahia-ingresar-' + b.id + '" type="button">Ingresar al ' + (b.tipo === 'patio' ? 'patio' : 'elevador') + '</button></div>' +
         '</div>' +
+        '<label class="bh-tablero-lbl">📷 Foto del tablero al ingresar (opcional)<input type="file" accept="image/*" id="bahia-tablero-' + b.id + '" style="display:none" /><span class="bh-tablero-ok" id="bahia-tablero-ok-' + b.id + '"></span></label>' +
         '<button type="button" class="bh-sincita" id="bahia-sincita-' + b.id + '">+ Llegó un auto sin cita</button>' +
       '</div>';
     }
@@ -1000,6 +1011,10 @@
 
   function ligarAccionesBahia(b) {
     if (!b.vehiculo_id) {
+      var inpTab = document.getElementById('bahia-tablero-' + b.id);
+      inpTab.onchange = function () {
+        document.getElementById('bahia-tablero-ok-' + b.id).textContent = inpTab.files && inpTab.files[0] ? ' ✓ lista' : '';
+      };
       document.getElementById('bahia-sincita-' + b.id).onclick = function () {
         abrirModalCita('nueva', { bahia_id: b.id, bahia_nombre: b.nombre, ingresarAhora: true });
       };
@@ -1518,6 +1533,48 @@
     return 'chip-problema';
   }
 
+  // Reduce la foto del celular (varios MB) a ~1280 px JPEG antes de guardarla: así sube rápido
+  // incluso con mala señal en el taller y no engorda la base de datos.
+  function comprimirFoto(archivo) {
+    return new Promise(function (resolve) {
+      var lector = new FileReader();
+      lector.onerror = function () { resolve(null); };
+      lector.onload = function () {
+        var img = new Image();
+        img.onerror = function () { resolve(null); };
+        img.onload = function () {
+          var max = 1280, w = img.width, h = img.height;
+          var k = Math.min(1, max / Math.max(w, h));
+          var cv = document.createElement('canvas');
+          cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          try { resolve(cv.toDataURL('image/jpeg', 0.72)); } catch (e) { resolve(null); }
+        };
+        img.src = lector.result;
+      };
+      lector.readAsDataURL(archivo);
+    });
+  }
+  // Control "foto" reutilizable: miniatura con × si ya hay foto, o botón para sacarla/elegirla.
+  function renderControlFoto(campo, valor, etiqueta) {
+    return '<div class="foto-ctl">' +
+      (valor
+        ? '<div class="foto-mini grande"><img src="' + valor + '" alt="' + escapeHtml(etiqueta) + '" />' +
+          '<button type="button" class="foto-mini-eliminar" data-foto-quitar="' + campo + '" aria-label="Quitar foto">×</button></div>'
+        : '<label class="foto-agregar-btn ancha">📷 ' + escapeHtml(etiqueta) +
+          '<input type="file" accept="image/*" data-foto-campo="' + campo + '" style="display:none" /></label>') +
+    '</div>';
+  }
+  function renderMedidaDisco(lado) {
+    var mm = lado === 'del' ? tallerEstado.discosDelMm : tallerEstado.discosTraMm;
+    var foto = lado === 'del' ? tallerEstado.discosDelFoto : tallerEstado.discosTraFoto;
+    return '<div class="disco-medida">' +
+      '<label class="disco-mm-lbl">Espesor medido (mm)' +
+        '<input type="text" inputmode="decimal" class="disco-mm" data-mm="' + lado + '" value="' + escapeHtml(mm || '') + '" placeholder="ej. 22,5" /></label>' +
+      renderControlFoto(lado === 'del' ? 'discosDel' : 'discosTra', foto, 'Foto del disco') +
+    '</div>';
+  }
+
   function renderBloqueFreno(inputId, pctId, labelId, titulo, valor, bloqueado, labelOverride, campo) {
     var val = (valor === '' || valor === null || valor === undefined) ? 100 : Number(valor);
     var labelTxt = bloqueado ? 'Bloqueado por defecto' : (labelOverride || labelPastillaPct(valor));
@@ -1564,6 +1621,7 @@
     html += renderSensorYReemplazo('del', tallerEstado.pastillasDelSensor, tallerEstado.pastillasDelReemplazar);
     html += renderBloqueFreno('taller-discos-del', 'taller-disco-del-pct', 'taller-disco-del-label', 'Discos delanteros', tallerEstado.discosDel, false, tallerEstado.discosDelRectificar ? 'Se rectifica (no se cambia)' : '', 'discosDel');
     html += renderBotonRectificar('del', tallerEstado.discosDelRectificar);
+    html += renderMedidaDisco('del');
     html += '<p class="campo-label-suelto" style="margin-top:12px">Tipo de freno trasero</p>' +
       '<div class="toggle-grupo">' +
         '<button type="button" class="toggle-opt' + (!esTambor ? ' activo' : '') + '" data-tipo-tra="pastillas">Pastillas traseras</button>' +
@@ -1573,6 +1631,7 @@
     html += renderSensorYReemplazo('tra', tallerEstado.pastillasTraSensor, tallerEstado.pastillasTraReemplazar);
     html += renderBloqueFreno('taller-discos-tra', 'taller-disco-tra-pct', 'taller-disco-tra-label', nombreDiscoTambor, tallerEstado.discosTra, false, tallerEstado.discosTraRectificar ? 'Se rectifica (no se cambia)' : '', 'discosTra');
     html += renderBotonRectificar('tra', tallerEstado.discosTraRectificar);
+    html += renderMedidaDisco('tra');
     return html;
   }
 
@@ -1621,6 +1680,7 @@
 
   function renderTallerEstado() {
     document.getElementById('taller-km').value = tallerEstado.kilometraje || '';
+    document.getElementById('taller-tablero-wrap').innerHTML = '<p class="campo-label-suelto">Foto del tablero (testigos encendidos, opcional)</p>' + renderControlFoto('tablero', tallerEstado.fotoTablero, 'Foto del tablero');
     document.getElementById('taller-tareas-chips').innerHTML = renderTareasChipsTaller();
     document.getElementById('taller-frenos-wrap').innerHTML = renderFrenosTaller();
     document.getElementById('taller-tareas-lista').innerHTML = renderTareasListaTaller();
@@ -1630,6 +1690,37 @@
   }
 
   function ligarEventosTaller() {
+    // mm de espesor de los discos
+    document.querySelectorAll('#taller-estado-wrap input[data-mm]').forEach(function (el) {
+      el.onblur = function () {
+        var mmTxt = el.value.trim().replace(',', '.');
+        el.value = mmTxt;
+        tallerEstado[el.getAttribute('data-mm') === 'del' ? 'discosDelMm' : 'discosTraMm'] = mmTxt;
+        guardarEstadoTaller(false);
+      };
+    });
+    // fotos (discos y tablero): se comprimen y se guardan al tiro
+    var PROP_FOTO = { discosDel: 'discosDelFoto', discosTra: 'discosTraFoto', tablero: 'fotoTablero' };
+    function guardarFoto(campo, valor) {
+      return api('/citas/' + tallerEstado.citaId + '/foto', { method: 'PATCH', body: { campo: campo, valor: valor } })
+        .then(function () { tallerEstado[PROP_FOTO[campo]] = valor || ''; renderTallerEstado(); })
+        .catch(function (e) { avisar(e.message || 'No se pudo guardar la foto.', true); });
+    }
+    document.querySelectorAll('#taller-estado-wrap input[data-foto-campo]').forEach(function (el) {
+      el.onchange = function () {
+        var archivo = el.files && el.files[0];
+        if (!archivo) return;
+        var campo = el.getAttribute('data-foto-campo');
+        avisar('Guardando foto…');
+        comprimirFoto(archivo).then(function (src) {
+          if (!src) { avisar('No se pudo leer la foto.', true); return; }
+          return guardarFoto(campo, src);
+        });
+      };
+    });
+    document.querySelectorAll('#taller-estado-wrap [data-foto-quitar]').forEach(function (b) {
+      b.onclick = function () { guardarFoto(b.getAttribute('data-foto-quitar'), null); };
+    });
     document.querySelectorAll('#taller-tareas-chips [data-agregar-tarea]').forEach(function (b) {
       b.onclick = function () {
         var nombre = b.getAttribute('data-agregar-tarea');
@@ -1721,14 +1812,7 @@
         var tIdx = Number(el.getAttribute('data-tarea-idx'));
         var archivos = Array.prototype.slice.call(el.files || []);
         if (!archivos.length) return;
-        Promise.all(archivos.map(function (archivo) {
-          return new Promise(function (resolve) {
-            var lector = new FileReader();
-            lector.onload = function () { resolve(lector.result); };
-            lector.onerror = function () { resolve(null); };
-            lector.readAsDataURL(archivo);
-          });
-        })).then(function (resultados) {
+        Promise.all(archivos.map(comprimirFoto)).then(function (resultados) {
           var t = tallerEstado.tareas[tIdx];
           if (!t) return;
           t.fotos = t.fotos || [];
@@ -1758,6 +1842,8 @@
       pastillasTra: tallerEstado.pastillasTra,
       discosDel: tallerEstado.discosDel,
       discosTra: tallerEstado.discosTra,
+      discosDelMm: tallerEstado.discosDelMm,
+      discosTraMm: tallerEstado.discosTraMm,
       pastillasTraTipo: tallerEstado.pastillasTraTipo,
       pastillasTraBloqueada: tallerEstado.pastillasTraBloqueada,
       discosDelRectificar: tallerEstado.discosDelRectificar,
@@ -1786,6 +1872,11 @@
         pastillasTra: c.pastillas_tra || '',
         discosDel: c.discos_del || '',
         discosTra: c.discos_tra || '',
+        discosDelMm: c.discos_del_mm || '',
+        discosTraMm: c.discos_tra_mm || '',
+        discosDelFoto: c.discos_del_foto || '',
+        discosTraFoto: c.discos_tra_foto || '',
+        fotoTablero: c.foto_tablero || '',
         pastillasTraTipo: c.pastillas_tra_tipo || 'pastillas',
         pastillasTraBloqueada: !!c.pastillas_tra_bloqueada,
         discosDelRectificar: !!c.discos_del_rectificar,
@@ -1813,6 +1904,16 @@
     function pad(n) { return String(n).padStart(2, '0'); }
     return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
   }
+
+  // Bloque de fotos para informe / orden (solo si hay al menos una).
+  function bloqueFotosHtml(items, titulo) {
+    var con = items.filter(function (i) { return i.f; });
+    if (!con.length) return '';
+    return '<div class="fotos-informe"><h3>' + escapeHtml(titulo) + '</h3><div class="fotos-fila">' +
+      con.map(function (i) { return '<figure><img src="' + i.f + '" alt="' + escapeHtml(i.t) + '"><figcaption>' + escapeHtml(i.t) + '</figcaption></figure>'; }).join('') +
+      '</div></div>';
+  }
+  var CSS_FOTOS_INFORME = '.fotos-informe{margin:0 0 16px;page-break-inside:avoid;}.fotos-informe h3{margin:0 0 8px;font-size:13px;}.fotos-fila{display:flex;flex-wrap:wrap;gap:12px;}.fotos-fila figure{margin:0;width:46%;min-width:200px;}.fotos-fila img{width:100%;height:auto;border:1px solid #333;border-radius:4px;display:block;}.fotos-fila figcaption{font-size:11px;color:#555;margin-top:3px;}';
 
   function construirInformeHtmlTaller(b, v) {
     var logoEl = document.getElementById('logo-header');
@@ -1853,6 +1954,8 @@
     var observaciones = [];
     if (hayFrenos) {
       if (b.pastillasDel !== '') observaciones.push('Pastillas de freno delanteras en ' + b.pastillasDel + '% de vida útil restante (' + labelPastillaPct(b.pastillasDel).toLowerCase() + ').' + (b.pastillasDelSensor ? ' Tiene sensor de desgaste.' : '') + (b.pastillasDelReemplazar ? ' Se marcó para reemplazar.' : ''));
+      if (b.discosDelMm) observaciones.push('Discos de freno delanteros: espesor medido ' + b.discosDelMm + ' mm.');
+      if (b.discosTraMm) observaciones.push(nombreDiscosTrasero + ': espesor medido ' + b.discosTraMm + ' mm.');
       if (b.discosDel !== '') observaciones.push(b.discosDelRectificar
         ? 'Discos de freno delanteros en ' + b.discosDel + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : 'Discos de freno delanteros en ' + b.discosDel + '% de vida útil restante (' + labelPastillaPct(b.discosDel).toLowerCase() + ').');
@@ -1883,7 +1986,7 @@
       'td,th{border:1px solid #333;padding:5px 8px;}' +
       '.celda-pct{text-align:center;width:70px;font-weight:700;}' +
       '.celda-estado-freno{text-align:center;width:110px;font-weight:700;}' +
-      '.obs-box{border:1px solid #333;padding:12px 16px;}' +
+      '.obs-box{border:1px solid #333;padding:12px 16px;}' + CSS_FOTOS_INFORME +
       '.obs-box h3{margin:0 0 8px;font-size:13px;}' +
       '.obs-box ol{margin:0;padding-left:20px;}' +
       '.acciones-no-print{margin-top:24px;}' +
@@ -1904,6 +2007,11 @@
         '<tr><td><strong>COMBUSTIBLE:</strong> ' + escapeHtml(combustible) + '</td><td><strong>PATENTE:</strong> ' + escapeHtml(v ? v.patente : '') + '</td><td><strong>KILOMETRAJE:</strong> ' + escapeHtml(km) + '</td></tr>' +
       '</table>' +
       (hayFrenos ? '<table><tr><th>FRENOS</th><th>% VIDA ÚTIL</th><th>ESTADO</th></tr>' + filasFrenos + '</table>' : '') +
+      (hayFrenos ? bloqueFotosHtml([
+        { t: 'Disco delantero' + (b.discosDelMm ? ' — ' + b.discosDelMm + ' mm' : ''), f: b.discosDelFoto },
+        { t: 'Disco trasero' + (b.discosTraMm ? ' — ' + b.discosTraMm + ' mm' : ''), f: b.discosTraFoto },
+      ], 'FOTOS DE LOS DISCOS') : '') +
+      bloqueFotosHtml([{ t: 'Tablero al ingresar', f: b.fotoTablero }], 'TABLERO') +
       (filasTareas ? '<table><tr><th>TRABAJOS SOLICITADOS</th><th colspan="3">ESTADO</th></tr>' + filasTareas + '</table>' : '') +
       '<div class="obs-box"><h3>OBSERVACIONES</h3><ol>' + liObs + '</ol></div>' +
       '<div class="acciones-no-print"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' +
@@ -1984,7 +2092,7 @@
       '.caja{border:1px solid #333;padding:12px 16px;margin-bottom:16px;}' +
       '.caja h3{margin:0 0 8px;font-size:13px;}' +
       '.caja ul{margin:0;padding-left:20px;}' +
-      '.linea{border-bottom:1px solid #999;height:26px;}' +
+      '.linea{border-bottom:1px solid #999;height:26px;}' + CSS_FOTOS_INFORME +
       '.acciones-no-print{margin-top:24px;}' +
       '.acciones-no-print button{font-family:inherit;font-size:14px;padding:10px 18px;border-radius:8px;border:none;cursor:pointer;background:#D9642E;color:#fff;}' +
       '@media print{ .acciones-no-print{display:none;} body{margin:20px;} }' +
@@ -2006,6 +2114,11 @@
       '<div class="caja"><h3>QUÉ SE LE VA A HACER</h3>' + (c.nota ? escapeHtml(c.nota) : '<span class="sub">Sin descripción — consultar con el asesor.</span>') + '</div>' +
       (filasTareas ? '<table><tr><th colspan="2">TRABAJOS A REALIZAR</th></tr>' + filasTareas + '</table>' : '') +
       (avisos ? '<div class="caja"><h3>AVISOS Y COMENTARIOS</h3><ul>' + avisos + '</ul></div>' : '') +
+      bloqueFotosHtml([
+        { t: 'Tablero al ingresar', f: c.foto_tablero },
+        { t: 'Disco delantero' + (c.discos_del_mm ? ' — ' + c.discos_del_mm + ' mm' : ''), f: c.discos_del_foto },
+        { t: 'Disco trasero' + (c.discos_tra_mm ? ' — ' + c.discos_tra_mm + ' mm' : ''), f: c.discos_tra_foto },
+      ], 'FOTOS') +
       '<div class="caja"><h3>OBSERVACIONES DEL MECÁNICO</h3>' + lineasEnBlanco + '</div>' +
       '<div class="acciones-no-print"><button onclick="window.print()">Imprimir / Guardar como PDF</button></div>' +
     '</body></html>';
@@ -2068,6 +2181,8 @@
     document.getElementById('modal-cita-titulo').textContent = modo === 'editar' ? 'Editar cita' : (ingresoDirecto ? 'Ingresar auto sin cita' : 'Nueva cita');
     document.getElementById('cita-fila-fecha').hidden = ingresoDirecto;
     document.getElementById('cita-fila-hora-fin').hidden = ingresoDirecto;
+    document.getElementById('cita-fila-tablero').hidden = !ingresoDirecto;
+    document.getElementById('cita-tablero').value = '';
     if (ingresoDirecto) document.getElementById('cita-bahia-nombre').value = 'Entra a: ' + (datos.bahia_nombre || '');
 
     var campoPatente = document.getElementById('cita-campo-patente');
@@ -2481,6 +2596,8 @@
             ? ' Se le envió un correo al cliente avisándole.'
             : ' ' + (r.correo.motivo || 'No se pudo enviar el correo al cliente.');
         }
+        var archivoTab = ingresoDirecto && document.getElementById('cita-tablero').files[0];
+        if (archivoTab && r && r.id) subirFotoTablero(r.id, archivoTab);
         avisar(msg);
         cerrarModalCita();
         cargarCalendarioSemana();

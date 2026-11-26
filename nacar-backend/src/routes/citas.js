@@ -494,6 +494,7 @@ router.get('/:id', requireAcceso('taller', 'agenda'), async (req, res) => {
               c.pastillas_tra_tipo, c.pastillas_tra_bloqueada, c.discos_del_rectificar, c.discos_tra_rectificar,
               c.pastillas_del_sensor, c.pastillas_del_reemplazar, c.pastillas_tra_sensor, c.pastillas_tra_reemplazar,
               c.estado_general, c.nota_estado, c.tareas,
+              c.discos_del_mm, c.discos_tra_mm, c.discos_del_foto, c.discos_tra_foto, c.foto_tablero,
               b.nombre AS bahia_nombre,
               v.patente, v.marca, v.modelo, v.anio, v.combustible,
               COALESCE(cl.nombre, v.cliente_nombre) AS cliente_nombre, cl.telefono AS cliente_telefono
@@ -616,6 +617,40 @@ router.post('/:id/listo', requireAcceso('taller'), async (req, res) => {
   }
 });
 
+// Espesor del disco en mm: acepta coma o punto, entre 0 y 60; vacío/ inválido -> NULL.
+function mmValido(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+  if (!isFinite(n) || n <= 0 || n > 60) return null;
+  return String(Math.round(n * 10) / 10);
+}
+
+// PATCH /api/citas/:id/foto { campo, valor } -> guarda (o borra con valor null) una foto de la cita:
+// discosDel / discosTra (foto del disco) o tablero (foto de los testigos al ingresar).
+const CAMPOS_FOTO = { discosDel: 'discos_del_foto', discosTra: 'discos_tra_foto', tablero: 'foto_tablero' };
+router.patch('/:id/foto', requireAcceso('taller'), async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body || {};
+  const col = CAMPOS_FOTO[body.campo];
+  if (!col) return res.status(400).json({ error: 'Foto no válida.' });
+  let valor = body.valor;
+  if (valor !== null && valor !== undefined && valor !== '') {
+    if (typeof valor !== 'string' || !/^data:image\/(jpeg|png|webp);base64,/.test(valor) || valor.length > 4000000) {
+      return res.status(400).json({ error: 'La foto no es válida o es demasiado pesada.' });
+    }
+  } else {
+    valor = null;
+  }
+  try {
+    const r = await pool.query(`UPDATE citas SET ${col} = $1, actualizado_en = now() WHERE id = $2 RETURNING id`, [valor, id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Cita no encontrada.' });
+    res.json({ ok: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo guardar la foto.' });
+  }
+});
+
 router.patch('/:id/estado-taller', requireAcceso('taller'), async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
@@ -638,8 +673,9 @@ router.patch('/:id/estado-taller', requireAcceso('taller'), async (req, res) => 
          pastillas_del_sensor = $10, pastillas_del_reemplazar = $11,
          pastillas_tra_sensor = $12, pastillas_tra_reemplazar = $13,
          estado_general = $14, nota_estado = $15, tareas = $16::jsonb,
+         discos_del_mm = $17, discos_tra_mm = $18,
          actualizado_en = now()
-       WHERE id = $17 RETURNING id`,
+       WHERE id = $19 RETURNING id`,
       [
         String(body.kilometraje || '').trim() || null,
         body.pastillasDel === '' || body.pastillasDel == null ? null : String(body.pastillasDel),
@@ -657,6 +693,8 @@ router.patch('/:id/estado-taller', requireAcceso('taller'), async (req, res) => 
         String(body.estadoGeneral || '').trim() || null,
         String(body.notaEstado || '').trim() || null,
         JSON.stringify(tareas),
+        mmValido(body.discosDelMm),
+        mmValido(body.discosTraMm),
         id,
       ]
     );
