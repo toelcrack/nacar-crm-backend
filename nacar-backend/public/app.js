@@ -257,7 +257,7 @@
           '<div class="vcard-modelo">' + escapeHtml(v.marca) + ' ' + escapeHtml(v.modelo) + (v.anio ? ' · ' + escapeHtml(v.anio) : '') + ' · ' + combustibleTxt + '</div>' +
           '<div class="vcard-cliente">' + escapeHtml(v.cliente_nombre || '') + (v.cliente_correo ? ' · ' + escapeHtml(v.cliente_correo) : '') + '</div>' +
         '</div>' +
-        '<div class="vcard-count">' + v.mantenciones_count + ' mantención' + (v.mantenciones_count === 1 ? '' : 'es') + '</div>' +
+        (v.mantenciones_count === undefined ? '' : '<div class="vcard-count">' + v.mantenciones_count + ' mantención' + (v.mantenciones_count === 1 ? '' : 'es') + '</div>') +
       '</div>' +
       '<div class="vcard-detalle" id="vcard-detalle-' + v.id + '"></div>' +
     '</article>';
@@ -291,7 +291,9 @@
     if (!cont) return;
     var data = detalleCache[id];
     var v = data.vehiculo;
-    var historial = data.mantenciones.length
+    var historial = data.historial_oculto
+      ? '<p class="sin-mant">El historial de mantenciones lo ve el administrador. Si el auto está en el taller, míralo en la pestaña Taller.</p>'
+      : data.mantenciones.length
       ? '<ul class="historial">' + data.mantenciones.map(function (m) { return renderMant(m, v.combustible); }).join('') + '</ul>'
       : '<p class="sin-mant">Sin mantenciones registradas todavía.</p>';
 
@@ -305,7 +307,7 @@
 
     cont.innerHTML =
       accionesVehiculo +
-      '<div class="historial-label">Historial de mantenciones</div>' +
+      '<div class="historial-label">' + (data.historial_oculto ? 'Mantenciones' : 'Historial de mantenciones') + '</div>' +
       historial +
       '<div style="margin-top:14px">' +
         '<button class="btn btn-secundario" id="btn-toggle-mant-' + id + '" type="button">+ Registrar mantención</button>' +
@@ -436,7 +438,7 @@
     }).catch(function (e) { avisar(e.message || 'No se pudo eliminar el vehículo.', true); });
   }
 
-  function renderMant(m, combustible) {
+  function renderMant(m, combustible, soloLectura) {
     var repuestos = [];
     if (m.filtro_aire) repuestos.push(conCodigo('Filtro aire', m.filtro_aire_codigo));
     if (m.filtro_polen) repuestos.push(conCodigo('Filtro polen', m.filtro_polen_codigo));
@@ -453,7 +455,7 @@
     linea2.push('Registrado por ' + escapeHtml(m.creado_por_nombre || '—') + ' el ' + fechaHoraBonita(m.creado_en));
     if (m.editado_en) linea2.push('Editado por ' + escapeHtml(m.editado_por_nombre || '—') + ' el ' + fechaHoraBonita(m.editado_en));
 
-    var acciones = usuarioActual.rol === 'admin'
+    var acciones = (usuarioActual.rol === 'admin' && !soloLectura)
       ? '<div class="mant-acciones">' +
           '<button class="btn-texto btn-editar-mant" type="button" data-m="' + m.id + '">Editar</button>' +
           '<button class="btn-texto btn-eliminar-mant" type="button" data-m="' + m.id + '">Eliminar</button>' +
@@ -869,7 +871,9 @@
       (b.cliente_nombre ? '<div class="bahia-cliente">' + escapeHtml(b.cliente_nombre) + '</div>' : '') +
       '<div class="bahia-desde">Desde ' + horaDeTimestamp(b.ingresado_en) + '</div>' +
       notaHtml +
+      '<div id="bahia-hist-' + b.id + '" class="bahia-hist" hidden></div>' +
       '<div class="acciones-form">' +
+        '<button class="btn-texto" id="bahia-hist-btn-' + b.id + '" type="button">Historial del auto</button>' +
         '<button class="btn-texto" id="bahia-detalle-' + b.id + '" type="button">Ver detalle y comentarios</button>' +
         '<button class="btn btn-secundario" id="bahia-liberar-' + b.id + '" type="button">Liberar</button>' +
       '</div>' +
@@ -888,6 +892,18 @@
       return;
     }
     document.getElementById('bahia-orden-' + b.id).onclick = function () { abrirOrdenTrabajo(b.cita_id); };
+    // Historial de lo que ya se le hizo a este auto con nosotros (solo lectura).
+    document.getElementById('bahia-hist-btn-' + b.id).onclick = function () {
+      var cont = document.getElementById('bahia-hist-' + b.id);
+      if (!cont.hidden) { cont.hidden = true; return; }
+      cont.hidden = false;
+      cont.innerHTML = '<p class="sin-mant">Cargando historial...</p>';
+      api('/vehiculos/' + b.vehiculo_id + '/historial-taller').then(function (d) {
+        cont.innerHTML = '<div class="historial-label">Historial con nosotros</div>' + (d.mantenciones.length
+          ? '<ul class="historial">' + d.mantenciones.map(function (m) { return renderMant(m, b.combustible, true); }).join('') + '</ul>'
+          : '<p class="sin-mant">Primera vez que viene: sin mantenciones registradas todavía.</p>');
+      }).catch(function (e) { cont.innerHTML = '<p class="sin-mant">' + escapeHtml(e.message || 'No se pudo cargar el historial.') + '</p>'; });
+    };
     document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
     document.getElementById('bahia-detalle-' + b.id).onclick = function () {
       abrirModalCita('editar', {

@@ -28,7 +28,7 @@ const SQL_OCUPACION_ACTUAL = `
          c.discos_del_rectificar, c.discos_tra_rectificar,
          c.pastillas_del_sensor, c.pastillas_del_reemplazar, c.pastillas_tra_sensor, c.pastillas_tra_reemplazar,
          c.estado_general, c.tareas,
-         v.id AS vehiculo_id, v.patente, v.marca, v.modelo, v.anio, v.cliente_nombre
+         v.id AS vehiculo_id, v.patente, v.marca, v.modelo, v.anio, v.combustible, v.cliente_nombre
   FROM bahias b
   LEFT JOIN LATERAL (
     SELECT * FROM citas c2

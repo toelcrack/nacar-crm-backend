@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../db');
-const { requireAuth, requireAdmin } = require('../auth');
+const { requireAuth, requireAdmin, requireAcceso } = require('../auth');
 const { consultarPatenteNacional } = require('../getapi');
 const { sugerirFiltros } = require('../filtros');
 const { resolverClienteId } = require('../clientes');
@@ -51,6 +51,9 @@ router.get('/', async (req, res) => {
        LIMIT 200`
     );
   }
+  // El historial de mantenciones lo ve solo el administrador (los mecánicos lo ven por auto,
+  // desde Taller, cuando el auto está en el taller — ver /:id/historial-taller).
+  if (req.usuario.rol !== 'admin') r.rows.forEach((v) => { delete v.mantenciones_count; });
   res.json(r.rows);
 });
 
@@ -161,7 +164,39 @@ router.get('/:id', async (req, res) => {
      ORDER BY mant.creado_en DESC`,
     [id]
   );
+  // Los mecánicos no ven el historial general: solo el administrador.
+  if (req.usuario.rol !== 'admin') return res.json({ vehiculo: v.rows[0], mantenciones: [], historial_oculto: true });
   res.json({ vehiculo: v.rows[0], mantenciones: m.rows });
+});
+
+// GET /api/vehiculos/:id/historial-taller -> historial de mantenciones de ESTE auto para el
+// equipo de Taller, solo mientras el auto está en el taller: ingresado a un elevador/patio, o
+// con cita hoy. Así un mecánico ve lo que ya se le hizo al auto que tiene delante, pero no puede
+// recorrer el historial de cualquier auto. Sin costos (eso es solo del administrador).
+router.get('/:id/historial-taller', requireAcceso('taller'), async (req, res) => {
+  const id = Number(req.params.id);
+  if (req.usuario.rol !== 'admin') {
+    const e = await pool.query(
+      `SELECT 1 FROM citas
+       WHERE vehiculo_id = $1 AND COALESCE(no_show, false) = false
+         AND ((ingresado_en IS NOT NULL AND salida_en IS NULL)
+              OR fecha = (now() AT TIME ZONE 'America/Santiago')::date)
+       LIMIT 1`,
+      [id]
+    );
+    if (!e.rows[0]) return res.status(403).json({ error: 'Solo se puede ver el historial de un auto que está en el taller o con cita hoy.' });
+  }
+  const m = await pool.query(
+    `SELECT mant.*, uc.nombre AS creado_por_nombre, ue.nombre AS editado_por_nombre
+     FROM mantenciones mant
+     LEFT JOIN usuarios uc ON uc.id = mant.creado_por
+     LEFT JOIN usuarios ue ON ue.id = mant.editado_por
+     WHERE mant.vehiculo_id = $1
+     ORDER BY mant.creado_en DESC`,
+    [id]
+  );
+  const filas = req.usuario.rol === 'admin' ? m.rows : m.rows.map((x) => { const y = Object.assign({}, x); delete y.costo; return y; });
+  res.json({ mantenciones: filas });
 });
 
 // PUT /api/vehiculos/:id  -> editar datos del vehículo (solo administrador). clienteId/
