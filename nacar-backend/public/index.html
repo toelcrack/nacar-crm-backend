@@ -282,6 +282,14 @@
 
   /* Tarjeta del auto en el elevador (vista mecánico) */
   .bahia-card.ocupada .bahia-header{margin-bottom:12px;}
+  .bh-resumen{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:transparent;border:none;padding:2px 0;min-height:48px;cursor:pointer;font-family:inherit;text-align:left;color:inherit;}
+  .bh-res-elev{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;color:var(--white);flex:none;}
+  .bh-res-placa{flex:1;min-width:0;font-family:'Oswald',sans-serif;font-weight:600;font-size:26px;letter-spacing:2px;line-height:1;color:#1A1310;}
+  .bahia-estado-chip.lista{background:#E1F3E5;border-color:#B7DEC0;color:#17592B;font-weight:700;}
+  .bh-res-flecha{flex:none;font-size:20px;color:#A93308;transition:transform .15s;}
+  .bahia-card.abierta .bh-res-flecha{transform:rotate(180deg);}
+  .bahia-card.ocupada .bh-detalle{display:none;margin-top:12px;}
+  .bahia-card.ocupada.abierta .bh-detalle{display:block;}
   .bh-patente{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;background:#1A1310;color:#fff;border:none;border-radius:16px;padding:12px 18px;min-height:60px;text-align:left;cursor:pointer;}
   .bh-patente-txt{font-family:'Oswald',sans-serif;font-weight:600;font-size:34px;letter-spacing:3px;line-height:1;}
   .bh-patente-hint{font-size:12px;font-weight:600;color:#FFD9C7;text-align:right;line-height:1.3;}

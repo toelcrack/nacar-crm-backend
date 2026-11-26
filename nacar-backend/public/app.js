@@ -853,6 +853,7 @@
       '</div>';
 
     if (!ocupada) {
+      delete bahiaAbierta[b.id]; // el próximo auto vuelve a empezar plegado
       return '<div class="bahia-card" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '">' + header +
         '<p class="bahia-disponible-txt">Sin auto asignado.</p>' +
         '<div class="bahia-pendiente-wrap">' +
@@ -885,9 +886,16 @@
       ? '<span class="bahia-estado-chip atrasado-chip">⚠️ Atraso / problema</span>' : '';
     var tabActual = tabBahia[b.id] || 'ultima';
 
-    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + '" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '" draggable="true">' +
-      '<div class="bahia-header"><div><span class="bahia-nombre">' + escapeHtml(b.nombre) + '</span><br><span class="bahia-tipo">' + tipoTxt + '</span></div>' +
-        '<span class="bahia-estado-chip ocupada">Ocupada · ' + escapeHtml(tiempoDesde(b.ingresado_en)) + '</span></div>' +
+    var abierta = !!bahiaAbierta[b.id];
+    var chipTxt = b.listo_en ? '✓ Listo' : escapeHtml(tiempoDesde(b.ingresado_en));
+    return '<div class="bahia-card ocupada' + (b.atrasado ? ' atrasado' : '') + (abierta ? ' abierta' : '') + '" id="bahia-' + b.id + '" data-bahia-id="' + b.id + '" draggable="true">' +
+      // Resumen siempre visible (elevador + patente): al tocarlo se despliega o se pliega el detalle.
+      '<button type="button" class="bh-resumen" id="bahia-toggle-' + b.id + '" aria-expanded="' + abierta + '">' +
+        '<span class="bh-res-elev">' + escapeHtml(b.nombre) + '</span>' +
+        '<span class="bh-res-placa">' + escapeHtml(b.patente) + '</span>' +
+        '<span class="bahia-estado-chip ' + (b.listo_en ? 'lista' : 'ocupada') + '">' + chipTxt + '</span>' +
+        '<span class="bh-res-flecha" aria-hidden="true">▾</span></button>' +
+      '<div class="bh-detalle">' +
       '<button type="button" class="bh-patente" id="bahia-orden-' + b.id + '" aria-label="Ver orden de trabajo de ' + escapeHtml(b.patente) + '">' +
         '<span class="bh-patente-txt">' + escapeHtml(b.patente) + '</span><span class="bh-patente-hint">Ver orden<br>de trabajo</span></button>' +
       atrasadoHtml +
@@ -906,11 +914,13 @@
         '<button class="btn btn-secundario" id="bahia-detalle-' + b.id + '" type="button">Detalle y comentarios</button>' +
         '<button class="btn btn-primario" id="bahia-liberar-' + b.id + '" type="button" data-texto="' + (b.listo_en ? 'Entregado' : 'Liberar elevador') + '">' + (b.listo_en ? 'Entregado' : 'Liberar elevador') + '</button>' +
       '</div>' +
+      '</div>' +
     '</div>';
   }
 
   // ---- Tarjeta del auto en el elevador (vista mecánico): helpers de historial ----
   var tabBahia = {};   // bahia id -> 'ultima' | 'hist'
+  var bahiaAbierta = {}; // bahia id -> true si el detalle está desplegado (se recuerda al refrescar)
   var histCache = {};  // vehiculo id -> mantenciones (solo lectura, ya sin costos para no administradores)
   var MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   function tiempoDesde(iso) {
@@ -996,6 +1006,13 @@
       document.getElementById('bahia-ingresar-' + b.id).onclick = function () { ingresarCitaPendiente(b.id); };
       return;
     }
+    document.getElementById('bahia-toggle-' + b.id).onclick = function () {
+      var card = document.getElementById('bahia-' + b.id);
+      var abre = !card.classList.contains('abierta');
+      card.classList.toggle('abierta', abre);
+      bahiaAbierta[b.id] = abre;
+      this.setAttribute('aria-expanded', abre ? 'true' : 'false');
+    };
     document.getElementById('bahia-orden-' + b.id).onclick = function () { abrirOrdenTrabajo(b.cita_id); };
     // Pestañas Última visita / Historial (solo lectura) y tareas marcables.
     document.querySelectorAll('#bahia-' + b.id + ' [data-bh-tab]').forEach(function (t) {
