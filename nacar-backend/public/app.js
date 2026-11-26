@@ -2970,5 +2970,51 @@
     window.addEventListener('appinstalled', function () { btnInstalar.hidden = true; });
   }
 
+  // ---------- Arrastrar hacia abajo para actualizar (como en cualquier app del celular) ----------
+  (function () {
+    var UMBRAL = 80, y0 = null, tirando = false, dist = 0;
+    var aviso = document.createElement('div');
+    aviso.setAttribute('aria-hidden', 'true');
+    aviso.style.cssText = 'position:fixed;top:0;left:50%;transform:translate(-50%,-60px);z-index:9999;background:#1A1310;color:#fff;' +
+      'font:600 14px Inter,system-ui,sans-serif;padding:10px 18px;border-radius:0 0 14px 14px;pointer-events:none;transition:transform .15s;';
+    document.body.appendChild(aviso);
+    function vistaActiva() {
+      for (var i = 0; i < VISTAS.length; i++) {
+        var sec = document.getElementById('vista-' + VISTAS[i]);
+        if (sec && !sec.hidden) return VISTAS[i];
+      }
+      return null;
+    }
+    function mover(px, texto) {
+      aviso.textContent = texto;
+      aviso.style.transform = 'translate(-50%,' + (px - 60) + 'px)';
+    }
+    document.addEventListener('touchstart', function (ev) {
+      var t = ev.target;
+      var pantalla = document.getElementById('pantalla-app');
+      var enModal = t.closest && t.closest('.modal, .modal-fondo, dialog, [role="dialog"], textarea, input, select');
+      if (!pantalla || pantalla.hidden || enModal || (window.scrollY || document.documentElement.scrollTop) > 0 || ev.touches.length !== 1) { y0 = null; return; }
+      y0 = ev.touches[0].clientY; tirando = false; dist = 0;
+    }, { passive: true });
+    document.addEventListener('touchmove', function (ev) {
+      if (y0 === null) return;
+      dist = ev.touches[0].clientY - y0;
+      if (dist > 10 && (window.scrollY || document.documentElement.scrollTop) === 0) {
+        tirando = true;
+        mover(Math.min(dist / 2, 70), dist > UMBRAL ? 'Suelta para actualizar' : 'Sigue bajando…');
+      } else if (dist <= 0) { tirando = false; mover(0, ''); aviso.style.transform = 'translate(-50%,-60px)'; }
+    }, { passive: true });
+    document.addEventListener('touchend', function () {
+      if (y0 === null) return;
+      var listo = tirando && dist > UMBRAL;
+      y0 = null; tirando = false;
+      if (!listo) { aviso.style.transform = 'translate(-50%,-60px)'; return; }
+      var v = vistaActiva();
+      mover(60, 'Actualizando…');
+      if (v && v !== 'simulador') mostrarVista(v);
+      setTimeout(function () { aviso.style.transform = 'translate(-50%,-60px)'; }, 700);
+    }, { passive: true });
+  })();
+
   api('/auth/me').then(mostrarApp).catch(mostrarLogin);
 })();
