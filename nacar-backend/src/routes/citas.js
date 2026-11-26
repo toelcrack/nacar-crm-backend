@@ -107,11 +107,15 @@ router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
   const horaInicio = String(body.hora_inicio || '').trim();
   const horaFin = String(body.hora_fin || '').trim();
   const nota = String(body.nota || '').trim();
+  // "Llegó un auto sin cita": se crea la cita de hoy y el auto entra al tiro al elevador indicado
+  // (fecha y hora las pone el servidor; no se manda correo ni el aviso de "agendó").
+  const ingresarAhora = body.ingresar_ahora === true;
 
   if (!patente) return res.status(400).json({ error: 'Escribe la patente del vehículo.' });
-  if (!esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
-  if (!esHoraValida(horaInicio)) return res.status(400).json({ error: 'Falta o es inválida la hora de inicio.' });
-  if (horaFin && !esHoraValida(horaFin)) {
+  if (ingresarAhora && !bahiaId) return res.status(400).json({ error: 'Falta indicar a qué elevador o patio ingresarlo.' });
+  if (!ingresarAhora && !esFechaValida(fecha)) return res.status(400).json({ error: 'Falta o es inválida la fecha.' });
+  if (!ingresarAhora && !esHoraValida(horaInicio)) return res.status(400).json({ error: 'Falta o es inválida la hora de inicio.' });
+  if (!ingresarAhora && horaFin && !esHoraValida(horaFin)) {
     return res.status(400).json({ error: 'La hora de término no es válida.' });
   }
 
@@ -119,6 +123,13 @@ router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
     if (bahiaId) {
       const b = await pool.query('SELECT id FROM bahias WHERE id = $1', [bahiaId]);
       if (!b.rows[0]) return res.status(404).json({ error: 'Bahía no encontrada.' });
+      if (ingresarAhora) {
+        const ocupada = await pool.query(
+          `SELECT id FROM citas WHERE bahia_id = $1 AND ingresado_en IS NOT NULL AND salida_en IS NULL LIMIT 1`,
+          [bahiaId]
+        );
+        if (ocupada.rows[0]) return res.status(409).json({ error: 'Esta bahía ya está ocupada. Libérala primero.' });
+      }
     }
 
     let vehiculoId;
@@ -141,6 +152,17 @@ router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
         [patente, (marca || '').trim(), (modelo || '').trim(), String(anio || ''), comb, (motor || '').trim(), clienteIdResuelto, req.usuario ? req.usuario.id : null]
       );
       vehiculoId = nuevoVehiculo.rows[0].id;
+    }
+
+    if (ingresarAhora) {
+      const ahora = await pool.query(
+        `INSERT INTO citas (bahia_id, vehiculo_id, fecha, hora_inicio, hora_fin, ingresado_en, nota, creado_por)
+         VALUES ($1, $2, (now() AT TIME ZONE 'America/Santiago')::date, (now() AT TIME ZONE 'America/Santiago')::time,
+                 NULL, now(), $3, $4) RETURNING id`,
+        [bahiaId, vehiculoId, nota || null, req.usuario ? req.usuario.id : null]
+      );
+      avisarCita('ingresado', ahora.rows[0].id, req.usuario);
+      return res.json({ ok: true, id: ahora.rows[0].id, correo: null });
     }
 
     const r = await pool.query(

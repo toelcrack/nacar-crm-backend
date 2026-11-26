@@ -851,15 +851,7 @@
           '</div>' +
           '<div class="acciones-form"><button class="btn btn-primario" id="bahia-ingresar-' + b.id + '" type="button">Ingresar al ' + (b.tipo === 'patio' ? 'patio' : 'elevador') + '</button></div>' +
         '</div>' +
-        '<p class="bahia-o-separador">— o asigna un auto directo, sin cita previa —</p>' +
-        '<div class="campo"><label for="bahia-patente-' + b.id + '">Patente</label>' +
-          '<input id="bahia-patente-' + b.id + '" list="bahia-dl-' + b.id + '" type="text" placeholder="AB1234" style="text-transform:uppercase" />' +
-          '<datalist id="bahia-dl-' + b.id + '"></datalist>' +
-        '</div>' +
-        '<div class="campo"><label for="bahia-nota-nueva-' + b.id + '">Nota (opcional)</label>' +
-          '<input id="bahia-nota-nueva-' + b.id + '" type="text" placeholder="Qué se le va a hacer" />' +
-        '</div>' +
-        '<div class="acciones-form"><button class="btn btn-secundario" id="bahia-asignar-' + b.id + '" type="button">Asignar</button></div>' +
+        '<button type="button" class="bh-sincita" id="bahia-sincita-' + b.id + '">+ Llegó un auto sin cita</button>' +
       '</div>';
     }
 
@@ -988,12 +980,9 @@
 
   function ligarAccionesBahia(b) {
     if (!b.vehiculo_id) {
-      var inp = document.getElementById('bahia-patente-' + b.id);
-      inp.addEventListener('input', function () {
-        clearTimeout(timerBahiaPatente[b.id]);
-        timerBahiaPatente[b.id] = setTimeout(function () { llenarDatalistBahia(b.id, inp.value.trim()); }, 300);
-      });
-      document.getElementById('bahia-asignar-' + b.id).onclick = function () { asignarBahia(b.id); };
+      document.getElementById('bahia-sincita-' + b.id).onclick = function () {
+        abrirModalCita('nueva', { bahia_id: b.id, bahia_nombre: b.nombre, ingresarAhora: true });
+      };
       document.getElementById('bahia-ingresar-' + b.id).onclick = function () { ingresarCitaPendiente(b.id); };
       return;
     }
@@ -1892,11 +1881,7 @@
     guardarEstadoTaller(false);
     var bahiaId = document.getElementById('cita-bahia-id').value;
     var html = construirInformeHtmlTaller(tallerEstado, tallerVehiculo);
-    var ventana = window.open('', '_blank');
-    if (!ventana) { avisar('El navegador bloqueó la ventana del informe — permite ventanas emergentes para generarlo.', true); return; }
-    ventana.document.open();
-    ventana.document.write(html);
-    ventana.document.close();
+    abrirVisorDoc(html);
     // Solo hay bahía que liberar si el auto llegó a entrar físicamente de verdad — un bahia_id
     // "sugerido" en una cita que nunca se ingresó no ocupa nada.
     if (!bahiaId || !citaActualIngresada) {
@@ -1943,7 +1928,7 @@
 
     var lineasEnBlanco = '<div class="linea"></div><div class="linea"></div><div class="linea"></div><div class="linea"></div>';
 
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Orden de trabajo ' + escapeHtml(c.patente) + '</title><style>' +
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orden de trabajo ' + escapeHtml(c.patente) + '</title><style>img{max-width:100%;height:auto;}.top{flex-wrap:wrap;}' +
       'body{font-family:Arial,Helvetica,sans-serif;color:#141413;margin:40px;font-size:13px;}' +
       'h1{font-size:22px;margin:0 0 4px;}' +
       '.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:20px;}' +
@@ -1985,26 +1970,50 @@
     '</body></html>';
   }
 
+  // Visor de documentos DENTRO de la app (orden de trabajo, informe): una pantalla completa con
+  // "← Volver" e "Imprimir / PDF". Antes se abría otra ventana, que en el celular instalado
+  // (Android no la abría; iPhone no dejaba volver) era inservible.
+  function cerrarVisorDoc(desdeHistorial) {
+    var v = document.getElementById('visor-doc');
+    if (v.hidden) return;
+    v.hidden = true;
+    document.getElementById('visor-frame').srcdoc = '';
+    if (!desdeHistorial && history.state && history.state.visorDoc) history.back();
+  }
+  function abrirVisorDoc(html) {
+    var v = document.getElementById('visor-doc');
+    document.getElementById('visor-frame').srcdoc = html;
+    if (v.hidden) {
+      v.hidden = false;
+      try { history.pushState({ visorDoc: 1 }, ''); } catch (e) {}
+    }
+  }
+  document.getElementById('visor-volver').onclick = function () { cerrarVisorDoc(false); };
+  document.getElementById('visor-imprimir').onclick = function () {
+    var f = document.getElementById('visor-frame');
+    try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { avisar('No se pudo abrir la impresión.', true); }
+  };
+  // El botón "atrás" del celular también cierra el visor en vez de salirse de la app.
+  window.addEventListener('popstate', function () { cerrarVisorDoc(true); });
+
   function abrirOrdenTrabajo(citaId) {
     if (!citaId) { avisar('No se encontró la cita de este auto.', true); return; }
-    var ventana = window.open('', '_blank');
-    if (!ventana) { avisar('El navegador bloqueó la ventana — permite ventanas emergentes para ver la orden de trabajo.', true); return; }
-    ventana.document.write('<p style="font-family:Arial;margin:40px;">Cargando orden de trabajo…</p>');
+    abrirVisorDoc('<p style="font-family:Arial;margin:40px;">Cargando orden de trabajo…</p>');
     Promise.all([
       api('/citas/' + citaId),
       api('/citas/' + citaId + '/comentarios').catch(function () { return []; }),
     ]).then(function (r) {
-      ventana.document.open();
-      ventana.document.write(construirOrdenTrabajoHtml(r[0], r[1]));
-      ventana.document.close();
+      abrirVisorDoc(construirOrdenTrabajoHtml(r[0], r[1]));
     }).catch(function (e) {
-      ventana.close();
+      cerrarVisorDoc(false);
       avisar(e.message || 'No se pudo cargar la orden de trabajo.', true);
     });
   }
 
+  var ingresoDirecto = false;
   function abrirModalCita(modo, datos) {
     citaModoActual = modo;
+    ingresoDirecto = modo === 'nueva' && !!datos.ingresarAhora;
     var modal = document.getElementById('modal-cita');
     var btnGuardarCita = document.getElementById('cita-guardar');
     btnGuardarCita.disabled = false;
@@ -2015,7 +2024,10 @@
     document.getElementById('cita-bahia-nombre').value = datos.ingresado_en
       ? (datos.bahia_nombre || '') + ' — ya ingresado'
       : (datos.bahia_id ? 'Sugerido: ' + (datos.bahia_nombre || '') : 'Pendiente (sin elevador asignado)');
-    document.getElementById('modal-cita-titulo').textContent = modo === 'editar' ? 'Editar cita' : 'Nueva cita';
+    document.getElementById('modal-cita-titulo').textContent = modo === 'editar' ? 'Editar cita' : (ingresoDirecto ? 'Ingresar auto sin cita' : 'Nueva cita');
+    document.getElementById('cita-fila-fecha').hidden = ingresoDirecto;
+    document.getElementById('cita-fila-hora-fin').hidden = ingresoDirecto;
+    if (ingresoDirecto) document.getElementById('cita-bahia-nombre').value = 'Entra a: ' + (datos.bahia_nombre || '');
 
     var campoPatente = document.getElementById('cita-campo-patente');
     var vehiculoTxt = document.getElementById('cita-vehiculo-txt');
@@ -2378,8 +2390,8 @@
     var horaFin = document.getElementById('cita-hora-fin').value;
     var nota = document.getElementById('cita-nota').value.trim();
 
-    if (!fecha) { avisar('Escoge la fecha.', true); return; }
-    if (!horaInicio) { avisar('Escoge la hora de inicio.', true); return; }
+    if (!ingresoDirecto && !fecha) { avisar('Escoge la fecha.', true); return; }
+    if (!ingresoDirecto && !horaInicio) { avisar('Escoge la hora de inicio.', true); return; }
 
     // Mientras se guarda (puede tardar unos segundos si hay que mandar el correo de aviso), el
     // botón se deshabilita y avisa "Guardando..." — así nunca se ve "pegado" sin ninguna señal,
@@ -2402,7 +2414,7 @@
       var promesaBody = incluyeDatosNuevos
         ? valorFinalDeSelect('cita-nv-marca', 'marcas').then(function (marca) {
             return {
-              bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota,
+              bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota, ingresar_ahora: ingresoDirecto,
               marca: marca,
               modelo: document.getElementById('cita-nv-modelo').value.trim(),
               anio: document.getElementById('cita-nv-anio').value.trim(),
@@ -2413,12 +2425,12 @@
               clienteTelefono: document.getElementById('cita-nv-telefono').value.trim(),
             };
           })
-        : Promise.resolve({ bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota });
+        : Promise.resolve({ bahia_id: bahiaId, patente: patente, fecha: fecha, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota, ingresar_ahora: ingresoDirecto });
 
       promesaBody.then(function (body) {
         return api('/citas', { method: 'POST', body: body });
       }).then(function (r) {
-        var msg = 'Cita agendada.';
+        var msg = ingresoDirecto ? 'Auto ingresado al elevador.' : 'Cita agendada.';
         // Antes, si el correo no se enviaba, simplemente no se decía nada — el backend ya
         // manda un "motivo" (ej. "No se pudo determinar el correo del cliente.") pero se
         // descartaba en silencio. Ahora se muestra siempre, para que quede claro por qué no
@@ -2432,6 +2444,7 @@
         cerrarModalCita();
         cargarCalendarioSemana();
         cargarCitasPendientes();
+        if (ingresoDirecto) cargarBahias();
       }).catch(function (e) {
         var mensajeError = e.message || 'No se pudo agendar la cita.';
         avisar(mensajeError, true);
