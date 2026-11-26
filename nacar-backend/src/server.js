@@ -62,5 +62,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`CRM Nácar escuchando en el puerto ${PORT}`);
+  console.log(`CRM Nacar escuchando en el puerto ${PORT}`);
 });

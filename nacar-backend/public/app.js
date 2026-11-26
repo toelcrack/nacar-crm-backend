@@ -147,7 +147,7 @@
     document.getElementById('pantalla-app').hidden = false;
     document.getElementById('usuario-nombre').textContent = usuario.nombre;
     var chip = document.getElementById('usuario-rol-chip');
-    chip.textContent = usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
+    chip.textContent = usuario.es_supremo ? 'Administrador supremo' : usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
     document.getElementById('btn-taller').hidden = !tieneAcceso('taller');
     document.getElementById('btn-agenda').hidden = !tieneAcceso('agenda');
     document.getElementById('btn-equipo').hidden = usuario.rol !== 'admin';
@@ -1705,7 +1705,7 @@
       '<div class="top">' +
         '<div><h1>INFORME DEL ESTADO DEL VEHÍCULO</h1></div>' +
         '<div class="marca-taller">' +
-          (logoSrc ? '<img src="' + logoSrc + '" alt="Nácar">' : '') +
+          (logoSrc ? '<img src="' + logoSrc + '" alt="Nacar">' : '') +
           '<strong>NACAR AUTOMOTRIZ</strong>' +
           'Camino San Alberto Hurtado 1630, Padre Hurtado<br>+56 9 8183 6269<br>tallernacarautomotriz.cl' +
         '</div>' +
@@ -1809,7 +1809,7 @@
         '<div><h1>ORDEN DE TRABAJO</h1><div class="patente-grande">' + escapeHtml(c.patente) + '</div>' +
           '<div>' + escapeHtml((c.marca || '') + ' ' + (c.modelo || '') + (c.anio ? ' · ' + c.anio : '')) + '</div></div>' +
         '<div class="marca-taller">' +
-          (logoSrc ? '<img src="' + logoSrc + '" alt="Nácar">' : '') +
+          (logoSrc ? '<img src="' + logoSrc + '" alt="Nacar">' : '') +
           '<strong>NACAR AUTOMOTRIZ</strong>' +
           'Camino San Alberto Hurtado 1630, Padre Hurtado<br>+56 9 8183 6269<br>tallernacarautomotriz.cl' +
         '</div>' +
@@ -2491,13 +2491,16 @@
           : '<label style="margin-right:10px"><input type="checkbox" data-acc="taller" data-uid="' + u.id + '"' + (u.acceso_taller ? ' checked' : '') + ' /> Taller</label>' +
             '<label><input type="checkbox" data-acc="agenda" data-uid="' + u.id + '"' + (u.acceso_agenda ? ' checked' : '') + ' /> Agenda</label>';
         return '<tr>' +
-          '<td>' + escapeHtml(u.nombre) + '</td>' +
+          '<td>' + escapeHtml(u.nombre) + (u.es_supremo ? ' <span class="badge-supremo">Supremo</span>' : '') + '</td>' +
           '<td>' + escapeHtml(u.correo) + '</td>' +
-          '<td>' + (u.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción') + '</td>' +
+          '<td>' + (u.es_supremo ? 'Administrador supremo' : u.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción') + '</td>' +
           '<td>' + acc + '</td>' +
           '<td>' + (u.activo ? '' : '<span class="badge-inactivo">Desactivada</span>') +
-            (u.id !== usuarioActual.id
+            (u.id !== usuarioActual.id && !u.es_supremo
               ? '<button class="btn-texto" data-id="' + u.id + '" data-activo="' + (u.activo ? '0' : '1') + '">' + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
+              : '') +
+            (usuarioActual.es_supremo
+              ? '<button class="btn-texto" data-clave="' + u.id + '" data-nombre="' + escapeHtml(u.nombre) + '">Cambiar clave</button>'
               : '') +
           '</td>' +
         '</tr>';
@@ -2511,6 +2514,26 @@
           api('/usuarios/' + chk.getAttribute('data-uid') + '/acceso', { method: 'PUT', body: body })
             .then(function () { avisar('Acceso actualizado.'); })
             .catch(function (e) { chk.checked = !chk.checked; avisar(e.message || 'No se pudo actualizar el acceso.', true); });
+        };
+      });
+      // Cambiar la clave de cualquier cuenta (solo el administrador supremo): formulario en la misma fila.
+      document.querySelectorAll('#tabla-equipo-wrap button[data-clave]').forEach(function (b) {
+        b.onclick = function () {
+          var celda = b.parentNode;
+          var uid = b.getAttribute('data-clave');
+          celda.innerHTML = '<div class="clave-form"><input type="text" class="clave-input" placeholder="Nueva clave (mín. 6)" autocomplete="off" autocapitalize="off" spellcheck="false" />' +
+            '<button class="btn btn-primario clave-ok" type="button">Guardar</button>' +
+            '<button class="btn-texto clave-cancelar" type="button">Cancelar</button></div>';
+          var inp = celda.querySelector('.clave-input');
+          inp.focus();
+          celda.querySelector('.clave-cancelar').onclick = cargarEquipo;
+          celda.querySelector('.clave-ok').onclick = function () {
+            var clave = inp.value;
+            if (clave.length < 6) { avisar('La clave debe tener al menos 6 caracteres.', true); return; }
+            api('/usuarios/' + uid + '/password', { method: 'PUT', body: { password: clave } })
+              .then(function (r) { avisar('Clave de ' + (r && r.nombre ? r.nombre : 'la cuenta') + ' cambiada.'); cargarEquipo(); })
+              .catch(function (e) { avisar(e.message || 'No se pudo cambiar la clave.', true); });
+          };
         };
       });
       document.querySelectorAll('#tabla-equipo-wrap button[data-id]').forEach(function (b) {

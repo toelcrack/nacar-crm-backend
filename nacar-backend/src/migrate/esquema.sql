@@ -1,4 +1,4 @@
--- Esquema del CRM de Nácar Service.
+-- Esquema del CRM de Nacar Service.
 -- Se puede correr muchas veces sin romper nada (todo con IF NOT EXISTS).
 
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -275,3 +275,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_citas_token_confirmacion ON citas (token_c
 -- siempre tienen acceso a todo, sin importar estos valores.
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_taller BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_agenda BOOLEAN NOT NULL DEFAULT true;
+
+-- Administrador supremo (26-nov-2026): el dueño. Es el único que puede cambiar la clave de
+-- cualquier cuenta; los demás administradores no pueden desactivarlo ni cambiarle los accesos.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS es_supremo BOOLEAN NOT NULL DEFAULT false;

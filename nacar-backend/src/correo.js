@@ -14,7 +14,7 @@
 // Variables de entorno (Railway → Variables), nunca hardcodeadas en el código:
 //   RESEND_API_KEY         — la API key de tu cuenta de Resend (Resend → API Keys).
 //   CORREO_TALLER_REMITENTE — opcional. El remitente que verás en el correo, ej.
-//                             'Taller Nácar Automotriz <taller@nacarautomotriz.cl>'. La parte
+//                             'Taller Nacar Automotriz <taller@nacarautomotriz.cl>'. La parte
 //                             después de la @ tiene que ser un dominio ya VERIFICADO en Resend
 //                             (Resend → Domains → agregar nacarautomotriz.cl y los registros DNS
 //                             que te pida). Si no se configura esta variable, se manda desde una
@@ -118,12 +118,12 @@ async function enviarCorreoCitaAgendada(datos) {
     return { enviado: false, motivo: 'El cliente no tiene correo registrado.' };
   }
 
-  const remitente = process.env.CORREO_TALLER_REMITENTE || 'Taller Nácar Automotriz <onboarding@resend.dev>';
+  const remitente = process.env.CORREO_TALLER_REMITENTE || 'Taller Nacar Automotriz <onboarding@resend.dev>';
   const autoTxt = [datos.marca, datos.modelo].filter((x) => x && String(x).trim()).join(' ') || 'tu vehículo';
-  const asunto = `Cita agendada — ${datos.patente} — Taller Nácar Automotriz`;
+  const asunto = `Cita agendada — ${datos.patente} — Taller Nacar Automotriz`;
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#241a14;max-width:480px;line-height:1.5">
-      <h2 style="color:#D9642E;margin:0 0 14px;font-size:20px">Taller Nácar Automotriz</h2>
+      <h2 style="color:#D9642E;margin:0 0 14px;font-size:20px">Taller Nacar Automotriz</h2>
       <p>Hola${datos.nombreCliente ? ' ' + escaparHtml(datos.nombreCliente) : ''},</p>
       <p>Te confirmamos que agendamos una hora para <strong>${escaparHtml(autoTxt)}</strong>
          (patente <strong>${escaparHtml(datos.patente)}</strong>):</p>
@@ -135,7 +135,7 @@ async function enviarCorreoCitaAgendada(datos) {
       </ul>
       <p>Si necesitas cambiar la hora, respóndenos a este correo o escríbenos al WhatsApp
          <a href="https://wa.me/56981836269" style="color:#D9642E">+56 9 8183 6269</a>.</p>
-      <p style="color:#8A8078;font-size:12px;margin-top:26px">Taller Nácar Automotriz</p>
+      <p style="color:#8A8078;font-size:12px;margin-top:26px">Taller Nacar Automotriz</p>
     </div>
   `;
 

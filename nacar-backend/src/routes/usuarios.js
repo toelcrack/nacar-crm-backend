@@ -1,14 +1,31 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { requireAuth, requireAdmin } = require('../auth');
+const { requireAuth, requireAdmin, requireSupremo } = require('../auth');
 
 const router = express.Router();
+
+// ¿La cuenta :id es la del administrador supremo? (false si la columna aún no existe)
+async function esSupremoObjetivo(id) {
+  try {
+    const r = await pool.query('SELECT es_supremo FROM usuarios WHERE id = $1', [id]);
+    return !!(r.rows[0] && r.rows[0].es_supremo);
+  } catch (e) {
+    if (e.code === '42703') return false;
+    throw e;
+  }
+}
 router.use(requireAuth, requireAdmin);
 
 // GET /api/usuarios -> lista de cuentas del taller (sin password)
 router.get('/', async (req, res) => {
-  const r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, creado_en FROM usuarios ORDER BY creado_en ASC');
+  let r;
+  try {
+    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, es_supremo, creado_en FROM usuarios ORDER BY es_supremo DESC, creado_en ASC');
+  } catch (e) {
+    if (e.code !== '42703') throw e;
+    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, false AS es_supremo, creado_en FROM usuarios ORDER BY creado_en ASC');
+  }
   res.json(r.rows);
 });
 
@@ -49,6 +66,9 @@ router.put('/:id/activo', async (req, res) => {
   if (id === req.usuario.id && !activo) {
     return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta.' });
   }
+  if (await esSupremoObjetivo(id)) {
+    return res.status(403).json({ error: 'Esa cuenta es la del administrador supremo; no se puede desactivar.' });
+  }
   const r = await pool.query(
     'UPDATE usuarios SET activo=$1 WHERE id=$2 RETURNING id, nombre, correo, rol, activo',
     [activo, id]
@@ -71,6 +91,21 @@ router.put('/:id/acceso', async (req, res) => {
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Cuenta no encontrada, o es administrador (siempre tiene todo el acceso).' });
   res.json(r.rows[0]);
+});
+
+// PUT /api/usuarios/:id/password -> cambiar la clave de CUALQUIER cuenta (solo el administrador
+// supremo). Body: { password }. La persona ya no puede entrar con la clave anterior; si tenía la
+// sesión abierta, la sigue usando hasta que expire el token (7 días a lo sumo).
+router.put('/:id/password', requireSupremo, async (req, res) => {
+  const id = Number(req.params.id);
+  const password = String((req.body || {}).password || '');
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'La clave debe tener al menos 6 caracteres.' });
+  }
+  const hash = await bcrypt.hash(password, 10);
+  const r = await pool.query('UPDATE usuarios SET password_hash = $1 WHERE id = $2 RETURNING id, nombre', [hash, id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'Cuenta no encontrada.' });
+  res.json({ ok: true, nombre: r.rows[0].nombre });
 });
 
 module.exports = router;

@@ -1,4 +1,4 @@
-// Service worker del CRM Nácar. Objetivo: que se pueda instalar como app y que abra rápido.
+// Service worker del CRM Nacar. Objetivo: que se pueda instalar como app y que abra rápido.
 // - Red primero: siempre intenta traer la versión nueva (así los cambios se ven al tiro).
 // - Si no hay internet, muestra la última copia guardada de la pantalla (no de los datos).
 // - NUNCA toca /api ni /c (confirmación del cliente): esos siempre van directo a internet.

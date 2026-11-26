@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { firmarToken, setCookieSesion, borrarCookieSesion, requireAuth, permisosDe } = require('../auth');
+const { firmarToken, setCookieSesion, borrarCookieSesion, requireAuth, permisosDe, esSupremo } = require('../auth');
 
 const router = express.Router();
 
@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
   const token = firmarToken(usuario);
   setCookieSesion(res, token);
   const p = await permisosDe(usuario.id);
-  res.json({ nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol, acceso_taller: !!(p && p.taller), acceso_agenda: !!(p && p.agenda) });
+  res.json({ nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol, acceso_taller: !!(p && p.taller), acceso_agenda: !!(p && p.agenda), es_supremo: await esSupremo(usuario.id) });
 });
 
 router.post('/logout', (req, res) => {
@@ -36,7 +36,7 @@ router.post('/logout', (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   const p = await permisosDe(req.usuario.id);
   if (!p) return res.status(401).json({ error: 'Tu cuenta está desactivada o ya no existe.' });
-  res.json(Object.assign({}, req.usuario, { acceso_taller: p.taller, acceso_agenda: p.agenda }));
+  res.json(Object.assign({}, req.usuario, { acceso_taller: p.taller, acceso_agenda: p.agenda, es_supremo: await esSupremo(req.usuario.id) }));
 });
 
 module.exports = router;

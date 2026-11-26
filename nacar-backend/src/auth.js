@@ -88,4 +88,29 @@ function requireAcceso(...secciones) {
   };
 }
 
-module.exports = { firmarToken, setCookieSesion, borrarCookieSesion, requireAuth, requireAdmin, requireAcceso, permisosDe, COOKIE_NAME };
+// Administrador supremo (el dueño del taller). Se lee de la base en cada pedido. Si la columna
+// todavía no existe (deploy antes que la migración) nadie es supremo, sin romper nada.
+async function esSupremo(usuarioId) {
+  try {
+    const r = await pool.query('SELECT es_supremo FROM usuarios WHERE id = $1 AND activo AND rol = \'admin\'', [usuarioId]);
+    return !!(r.rows[0] && r.rows[0].es_supremo);
+  } catch (e) {
+    if (e.code === '42703') return false;
+    throw e;
+  }
+}
+
+async function requireSupremo(req, res, next) {
+  try {
+    if (!req.usuario || !(await esSupremo(req.usuario.id))) {
+      return res.status(403).json({ error: 'Esta acción es solo para el administrador supremo.' });
+    }
+    next();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo verificar tu permiso.' });
+  }
+}
+
+module.exports = { firmarToken, setCookieSesion, borrarCookieSesion, requireAuth, requireAdmin, requireAcceso, requireSupremo, esSupremo, permisosDe, COOKIE_NAME };

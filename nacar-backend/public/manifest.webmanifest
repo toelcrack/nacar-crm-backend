@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Nácar Automotriz · CRM del taller",
-  "short_name": "Nácar CRM",
-  "description": "Agenda, taller y vehículos de Nácar Automotriz.",
+  "name": "Nacar Automotriz · CRM del taller",
+  "short_name": "Nacar CRM",
+  "description": "Agenda, taller y vehículos de Nacar Automotriz.",
   "lang": "es-CL",
   "start_url": "/?desde=app",
   "scope": "/",

@@ -1,4 +1,4 @@
-# CRM Nácar — backend real
+# CRM Nacar — backend real
 
 Este es el sistema real: base de datos compartida, login con contraseña para ti y tu equipo, y roles (administrador vs. mecánico/recepción) aplicados de verdad en el servidor — no solo escondiendo botones como en el prototipo.
 
