@@ -22,7 +22,8 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.14",
-    "pg": "^8.11.5"
+    "pg": "^8.11.5",
+    "web-push": "^4.0.0"
   },
   "engines": {
     "node": ">=18"

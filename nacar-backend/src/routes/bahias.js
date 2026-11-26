@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireAcceso } = require('../auth');
+const { avisarCita } = require('../push');
 
 const router = express.Router();
 // Cualquier usuario logueado (admin o mecánico) puede ver y mover la agenda del taller —
@@ -22,7 +23,7 @@ router.use(requireAuth);
 // que el mecánico la ingrese en CUALQUIER bahía disponible, no solo en la sugerida.
 const SQL_OCUPACION_ACTUAL = `
   SELECT b.id, b.nombre, b.tipo, b.orden,
-         c.id AS cita_id, c.fecha, c.nota, c.atrasado, c.hora_inicio, c.hora_fin, c.ingresado_en,
+         c.id AS cita_id, c.fecha, c.nota, c.atrasado, c.hora_inicio, c.hora_fin, c.ingresado_en, c.listo_en,
          c.pastillas_del, c.pastillas_tra, c.discos_del, c.discos_tra,
          c.pastillas_tra_tipo, c.pastillas_tra_bloqueada,
          c.discos_del_rectificar, c.discos_tra_rectificar,
@@ -96,6 +97,7 @@ router.post('/:id/asignar', requireAcceso('taller'), async (req, res) => {
        ) RETURNING id`,
       [id, v.rows[0].id, nota || null, req.usuario ? req.usuario.id : null]
     );
+    avisarCita('ingresado', r.rows[0].id, req.usuario);
     res.json({ ok: true, cita_id: r.rows[0].id });
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -121,6 +123,7 @@ router.post('/:id/liberar', requireAcceso('taller'), async (req, res) => {
       [id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Esta bahía ya estaba disponible.' });
+    avisarCita('entregado', r.rows[0].id, req.usuario);
     res.json({ ok: true });
   } catch (e) {
     // eslint-disable-next-line no-console

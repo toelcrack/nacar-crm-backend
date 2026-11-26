@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { requireAuth, requireAcceso } = require('../auth');
 const { resolverClienteId } = require('../clientes');
 const { enviarCorreoCitaAgendada } = require('../correo');
+const { avisarCita } = require('../push');
 
 const router = express.Router();
 
@@ -182,6 +183,7 @@ router.post('/', requireAcceso('agenda_editar'), async (req, res) => {
       correo = { enviado: false, motivo: 'Error interno preparando el correo.' };
     }
 
+    avisarCita('agendado', r.rows[0].id, req.usuario); // sin esperar: nunca frena el agendamiento
     res.json({ ok: true, id: r.rows[0].id, correo });
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -264,6 +266,7 @@ router.post('/:id/ingresar', requireAcceso('taller'), async (req, res) => {
        WHERE id = $2`,
       [bahiaId, id]
     );
+    avisarCita('ingresado', id, req.usuario);
     res.json({ ok: true });
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -563,6 +566,28 @@ router.patch('/:id/tarea', requireAcceso('taller'), async (req, res) => {
     // eslint-disable-next-line no-console
     console.error(e);
     res.status(500).json({ error: 'No se pudo marcar la tarea.' });
+  }
+});
+
+// POST /api/citas/:id/listo -> el mecánico terminó el trabajo: el auto queda "listo para entregar"
+// y se avisa a quien corresponda (Andy). Body: { listo: false } lo deshace (por si se apretó sin querer).
+router.post('/:id/listo', requireAcceso('taller'), async (req, res) => {
+  const id = Number(req.params.id);
+  const listo = (req.body || {}).listo !== false;
+  try {
+    const r = await pool.query(
+      `UPDATE citas SET listo_en = ${listo ? 'COALESCE(listo_en, now())' : 'NULL'}, actualizado_en = now()
+       WHERE id = $1 AND ingresado_en IS NOT NULL AND salida_en IS NULL
+       RETURNING id, (listo_en IS NOT NULL) AS listo`,
+      [id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Este auto ya no está en el taller.' });
+    if (listo) avisarCita('listo', id, req.usuario);
+    res.json({ ok: true, listo: r.rows[0].listo });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo marcar el auto como listo.' });
   }
 });
 

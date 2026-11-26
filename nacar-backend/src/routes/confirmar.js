@@ -5,6 +5,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { escaparHtml, formatearFecha, formatearHora } = require('../correo');
+const { avisarConfirmacion } = require('../push');
 
 const router = express.Router();
 const WHATSAPP = 'https://wa.me/56981836269';
@@ -79,6 +80,7 @@ router.post('/:token', express.urlencoded({ extended: false }), async (req, res)
       'UPDATE citas SET respuesta_cliente = $1, confirmada_cliente = $2, actualizado_en = now() WHERE id = $3',
       [resp, resp === 'si', c.id]
     );
+    avisarConfirmacion(c.id, resp);
     res.send(pagina(resultado(c, resp)));
   } catch (e) {
     // eslint-disable-next-line no-console

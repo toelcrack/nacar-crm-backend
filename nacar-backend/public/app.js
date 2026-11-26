@@ -193,6 +193,13 @@
     if (nombre === 'estadisticas') cargarEstadisticas();
     if (nombre === 'configuracion') cargarPanelConfiguracion();
   }
+  // Al tocar una notificación con la app ya abierta, el link (/#taller, /#agenda) cambia de pestaña.
+  window.addEventListener('hashchange', function () {
+    var d = String(location.hash || '').replace('#', '');
+    var b = document.getElementById('btn-' + d);
+    var pantalla = document.getElementById('pantalla-app');
+    if (pantalla && !pantalla.hidden && VISTAS.indexOf(d) >= 0 && b && !b.hidden) mostrarVista(d);
+  });
   document.getElementById('btn-vehiculos').onclick = function () { mostrarVista('vehiculos'); };
   document.getElementById('btn-taller').onclick = function () { mostrarVista('taller'); };
   document.getElementById('btn-agenda').onclick = function () { mostrarVista('agenda'); };
@@ -890,9 +897,12 @@
         '<button type="button" role="tab" class="bh-tab' + (tabActual === 'hist' ? ' activa' : '') + '" data-bh-tab="hist" id="bahia-tab-hist-' + b.id + '" aria-selected="' + (tabActual === 'hist') + '">Historial</button>' +
       '</div>' +
       '<div id="bahia-hist-' + b.id + '" class="bh-panel"><p class="sin-mant">Cargando historial...</p></div>' +
+      (b.listo_en
+        ? '<div class="bh-listo"><span>✓ Listo para entregar · desde las ' + horaDeTimestamp(b.listo_en) + '</span><button type="button" id="bahia-deshacer-' + b.id + '">Deshacer</button></div>'
+        : '<button type="button" class="bh-terminar" id="bahia-terminar-' + b.id + '">Terminé — avisar a Andy</button>') +
       '<div class="bh-acciones">' +
         '<button class="btn btn-secundario" id="bahia-detalle-' + b.id + '" type="button">Detalle y comentarios</button>' +
-        '<button class="btn btn-primario" id="bahia-liberar-' + b.id + '" type="button">Liberar elevador</button>' +
+        '<button class="btn btn-primario" id="bahia-liberar-' + b.id + '" type="button" data-texto="' + (b.listo_en ? 'Entregado' : 'Liberar elevador') + '">' + (b.listo_en ? 'Entregado' : 'Liberar elevador') + '</button>' +
       '</div>' +
     '</div>';
   }
@@ -1010,6 +1020,19 @@
       };
     });
     document.getElementById('bahia-liberar-' + b.id).onclick = function (e) { liberarBahia(b.id, e.currentTarget); };
+    var btnTerminar = document.getElementById('bahia-terminar-' + b.id);
+    if (btnTerminar) btnTerminar.onclick = function () {
+      btnTerminar.disabled = true;
+      api('/citas/' + b.cita_id + '/listo', { method: 'POST', body: { listo: true } })
+        .then(function () { avisar('Listo: se avisó que el auto está terminado.'); cargarBahias(); })
+        .catch(function (e) { btnTerminar.disabled = false; avisar(e.message || 'No se pudo marcar el auto como listo.', true); });
+    };
+    var btnDeshacer = document.getElementById('bahia-deshacer-' + b.id);
+    if (btnDeshacer) btnDeshacer.onclick = function () {
+      api('/citas/' + b.cita_id + '/listo', { method: 'POST', body: { listo: false } })
+        .then(function () { cargarBahias(); })
+        .catch(function (e) { avisar(e.message || 'No se pudo deshacer.', true); });
+    };
     document.getElementById('bahia-detalle-' + b.id).onclick = function () {
       abrirModalCita('editar', {
         id: b.cita_id,
@@ -1054,15 +1077,16 @@
   function liberarBahia(bId, btn) {
     if (btn.getAttribute('data-confirmar') !== '1') {
       btn.setAttribute('data-confirmar', '1');
-      btn.textContent = '¿Seguro? Sí, liberar';
+      var entregado = btn.getAttribute('data-texto') === 'Entregado';
+      btn.textContent = entregado ? '¿Seguro? Sí, entregado' : '¿Seguro? Sí, liberar';
       clearTimeout(btn._t);
-      btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = 'Liberar'; }, 3000);
+      btn._t = setTimeout(function () { btn.removeAttribute('data-confirmar'); btn.textContent = btn.getAttribute('data-texto') || 'Liberar'; }, 3000);
       return;
     }
     // Liberar le pone hora de término a la cita en curso (no la borra) — queda en el
     // calendario de hoy como un bloque ya terminado.
     api('/bahias/' + bId + '/liberar', { method: 'POST' })
-      .then(function () { avisar('Bahía liberada.'); cargarBahias(); cargarCalendarioSemana(); })
+      .then(function () { avisar(btn.getAttribute('data-texto') === 'Entregado' ? 'Auto entregado.' : 'Bahía liberada.'); cargarBahias(); cargarCalendarioSemana(); })
       .catch(function (e) { avisar(e.message || 'No se pudo liberar la bahía.', true); });
   }
 
@@ -2682,11 +2706,17 @@
               '<option value="editar"' + (u.acceso_agenda && !u.agenda_solo_ver ? ' selected' : '') + '>Ver y editar</option>' +
               '<option value="ver"' + (u.acceso_agenda && u.agenda_solo_ver ? ' selected' : '') + '>Solo ver</option>' +
               '<option value="no"' + (!u.acceso_agenda ? ' selected' : '') + '>Sin acceso</option></select></label>';
+        var AVISOS = [['agendado', 'Agendan un auto'], ['ingresado', 'Toman un auto'], ['listo', 'Terminan un auto'], ['entregado', 'Entregan un auto'], ['confirmacion', 'Cliente responde']];
+        var avisosHtml = '<div class="avisos-lista">' + AVISOS.map(function (a) {
+          return '<label><input type="checkbox" data-aviso="' + a[0] + '" data-uid="' + u.id + '"' + ((u.avisos || []).indexOf(a[0]) >= 0 ? ' checked' : '') + ' /> ' + a[1] + '</label>';
+        }).join('') + '</div>' +
+          '<div style="font-size:12px;color:var(--gray-3);margin-top:4px">' + (u.celulares ? u.celulares + (u.celulares === 1 ? ' celular activado' : ' celulares activados') : 'Aún no activa avisos en su celular') + '</div>';
         return '<tr>' +
           '<td>' + escapeHtml(u.nombre) + (u.es_supremo ? ' <span class="badge-supremo">Supremo</span>' : '') + '</td>' +
           '<td>' + escapeHtml(u.correo) + '</td>' +
           '<td>' + (u.es_supremo ? 'Administrador supremo' : u.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción') + '</td>' +
           '<td>' + acc + '</td>' +
+          '<td>' + avisosHtml + '</td>' +
           '<td>' + (u.activo ? '' : '<span class="badge-inactivo">Desactivada</span>') +
             (u.id !== usuarioActual.id && !u.es_supremo
               ? '<button class="btn-texto" data-id="' + u.id + '" data-activo="' + (u.activo ? '0' : '1') + '">' + (u.activo ? 'Desactivar' : 'Activar') + '</button>'
@@ -2699,13 +2729,24 @@
         '</tr>';
       }).join('');
       document.getElementById('tabla-equipo-wrap').innerHTML =
-        '<table class="usuarios"><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Acceso</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>';
+        '<table class="usuarios"><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Acceso</th><th>Le llegan avisos de</th><th></th></tr></thead><tbody>' + filas + '</tbody></table>';
       document.querySelectorAll('#tabla-equipo-wrap select[data-agenda-nivel]').forEach(function (sel) {
         var previo = sel.value;
         sel.onchange = function () {
           api('/usuarios/' + sel.getAttribute('data-uid') + '/acceso', { method: 'PUT', body: { agenda_nivel: sel.value } })
             .then(function () { previo = sel.value; avisar('Acceso a la agenda actualizado.'); })
             .catch(function (e) { sel.value = previo; avisar(e.message || 'No se pudo actualizar el acceso.', true); });
+        };
+      });
+      document.querySelectorAll('#tabla-equipo-wrap input[data-aviso]').forEach(function (chk) {
+        chk.onchange = function () {
+          var uid = chk.getAttribute('data-uid');
+          var marcados = Array.prototype.map.call(
+            document.querySelectorAll('#tabla-equipo-wrap input[data-aviso][data-uid="' + uid + '"]:checked'),
+            function (x) { return x.getAttribute('data-aviso'); });
+          api('/usuarios/' + uid + '/avisos', { method: 'PUT', body: { avisos: marcados } })
+            .then(function () { avisar('Avisos actualizados.'); })
+            .catch(function (e) { chk.checked = !chk.checked; avisar(e.message || 'No se pudieron actualizar los avisos.', true); });
         };
       });
       document.querySelectorAll('#tabla-equipo-wrap input[data-acc]').forEach(function (chk) {
@@ -2969,6 +3010,61 @@
     };
     window.addEventListener('appinstalled', function () { btnInstalar.hidden = true; });
   }
+
+  // ---------- Notificaciones: activar / apagar en este celular ----------
+  (function () {
+    var btn = document.getElementById('btn-avisos');
+    if (!btn || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return; // iPhone sin instalar, etc.
+    function b64(base64) {
+      var pad = '='.repeat((4 - base64.length % 4) % 4);
+      var raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+      var out = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+    function pintar(activo) {
+      btn.hidden = false;
+      btn.classList.toggle('on', activo);
+      btn.textContent = activo ? '🔔 Avisos ✓' : '🔔 Avisos';
+    }
+    function suscripcionActual() {
+      return navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); });
+    }
+    function refrescar() {
+      if (Notification.permission === 'denied') { btn.hidden = false; btn.classList.remove('on'); btn.textContent = '🔕 Bloqueados'; return; }
+      suscripcionActual().then(function (s) { pintar(!!s); }).catch(function () {});
+    }
+    btn.onclick = function () {
+      if (Notification.permission === 'denied') {
+        avisar('Los avisos están bloqueados. Actívalos en los permisos del sitio, en la configuración del navegador.', true);
+        return;
+      }
+      suscripcionActual().then(function (sub) {
+        if (sub) {
+          // Ya activo: se apaga en este celular.
+          return api('/avisos/desuscribir', { method: 'POST', body: { endpoint: sub.endpoint } })
+            .then(function () { return sub.unsubscribe(); })
+            .then(function () { pintar(false); avisar('Avisos apagados en este celular.'); });
+        }
+        return Notification.requestPermission().then(function (perm) {
+          if (perm !== 'granted') { refrescar(); throw new Error('No diste permiso para las notificaciones.'); }
+          return api('/avisos/clave').then(function (r) {
+            return navigator.serviceWorker.ready.then(function (reg) {
+              return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(r.clave) });
+            });
+          }).then(function (nueva) {
+            return api('/avisos/suscribir', { method: 'POST', body: nueva.toJSON() });
+          }).then(function () {
+            pintar(true);
+            avisar('Avisos activados. Recibirás los que el administrador te haya asignado.');
+            return api('/avisos/prueba', { method: 'POST' }).catch(function () {});
+          });
+        });
+      }).catch(function (e) { avisar(e.message || 'No se pudieron activar los avisos.', true); });
+    };
+    window.__refrescarBotonAvisos = refrescar;
+    refrescar();
+  })();
 
   // ---------- Arrastrar hacia abajo para actualizar (como en cualquier app del celular) ----------
   (function () {

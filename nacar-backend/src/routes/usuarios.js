@@ -21,10 +21,10 @@ router.use(requireAuth, requireAdmin);
 router.get('/', async (req, res) => {
   let r;
   try {
-    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, agenda_solo_ver, es_supremo, creado_en FROM usuarios ORDER BY es_supremo DESC, creado_en ASC');
+    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, agenda_solo_ver, es_supremo, avisos, (SELECT COUNT(*) FROM push_suscripciones s WHERE s.usuario_id = usuarios.id)::int AS celulares, creado_en FROM usuarios ORDER BY es_supremo DESC, creado_en ASC');
   } catch (e) {
     if (e.code !== '42703') throw e;
-    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, false AS agenda_solo_ver, false AS es_supremo, creado_en FROM usuarios ORDER BY creado_en ASC');
+    r = await pool.query('SELECT id, nombre, correo, rol, activo, acceso_taller, acceso_agenda, false AS agenda_solo_ver, false AS es_supremo, ARRAY[]::text[] AS avisos, 0 AS celulares, creado_en FROM usuarios ORDER BY creado_en ASC');
   }
   res.json(r.rows);
 });
@@ -101,6 +101,18 @@ router.put('/:id/acceso', async (req, res) => {
     [typeof b.acceso_taller === 'boolean' ? b.acceso_taller : null, agendaAcceso, agendaSoloVer, id]
   );
   if (!r.rows[0]) return res.status(404).json({ error: 'Cuenta no encontrada, o es administrador (siempre tiene todo el acceso).' });
+  res.json(r.rows[0]);
+});
+
+// PUT /api/usuarios/:id/avisos -> qué notificaciones recibe esa persona (cualquier cuenta, también admins).
+// Body: { avisos: ['agendado','ingresado','listo','entregado','confirmacion'] } ([] = ninguna).
+router.put('/:id/avisos', async (req, res) => {
+  const id = Number(req.params.id);
+  const validos = Object.keys(require('../push').EVENTOS);
+  const lista = Array.isArray((req.body || {}).avisos) ? req.body.avisos.filter((x) => validos.includes(x)) : null;
+  if (!lista) return res.status(400).json({ error: 'Faltan los avisos a activar.' });
+  const r = await pool.query('UPDATE usuarios SET avisos = $1::text[] WHERE id = $2 RETURNING id, avisos', [Array.from(new Set(lista)), id]);
+  if (!r.rows[0]) return res.status(404).json({ error: 'Cuenta no encontrada.' });
   res.json(r.rows[0]);
 });
 

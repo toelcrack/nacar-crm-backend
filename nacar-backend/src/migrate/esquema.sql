@@ -283,3 +283,25 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS es_supremo BOOLEAN NOT NULL DEFAUL
 -- Agenda solo para mirar (26-nov-2026): la cuenta ve la agenda pero no puede crear, mover ni cancelar citas.
 -- Se combina con acceso_agenda: sin acceso = no la ve; con acceso y agenda_solo_ver = solo la mira.
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS agenda_solo_ver BOOLEAN NOT NULL DEFAULT false;
+
+-- Notificaciones push (26-nov-2026) y botón "Terminé" del mecánico.
+-- usuarios.avisos: lista de avisos que recibe cada persona (se elige en Equipo). Vacío = ninguno.
+-- Claves: agendado, ingresado, listo, entregado, confirmacion.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS avisos TEXT[] NOT NULL DEFAULT '{}';
+-- citas.listo_en: el mecánico marcó "Terminé" (el auto está listo para que Andy lo entregue).
+ALTER TABLE citas ADD COLUMN IF NOT EXISTS listo_en TIMESTAMPTZ;
+-- Un celular/navegador suscrito a las notificaciones de una cuenta.
+CREATE TABLE IF NOT EXISTS push_suscripciones (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_push_usuario ON push_suscripciones (usuario_id);
+-- Configuración interna (ej. llaves VAPID que se generan solas la primera vez).
+CREATE TABLE IF NOT EXISTS app_config (
+  clave TEXT PRIMARY KEY,
+  valor TEXT NOT NULL
+);

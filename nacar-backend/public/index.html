@@ -312,6 +312,14 @@
   .bh-item-top span{font-size:14px;color:var(--gray-3);font-weight:500;}
   .bh-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
   .bh-chips span{background:#FDF3EE;border:1px solid #F0C9B6;border-radius:999px;padding:4px 10px;font-size:13px;font-weight:500;}
+  .bh-terminar{display:block;width:100%;box-sizing:border-box;min-height:54px;margin-top:16px;border:none;border-radius:14px;background:#2F7D32;color:#fff;font-size:16px;font-weight:700;cursor:pointer;}
+  .bh-listo{margin-top:16px;border:1.5px solid #B9D8B0;background:#F1F7EF;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;color:#1E5A22;font-weight:700;font-size:15px;}
+  .bh-listo button{min-height:44px;background:none;border:none;color:#1E5A22;text-decoration:underline;font-size:14px;font-weight:600;cursor:pointer;}
+  .btn-avisos{white-space:nowrap;background:#fff;color:#1A1310;border:1.5px solid #E7B49B;border-radius:999px;padding:8px 14px;font-weight:600;cursor:pointer;font-size:14px;}
+  .btn-avisos.on{background:#F1F7EF;border-color:#B9D8B0;color:#1E5A22;}
+  .btn-avisos[hidden]{display:none;}
+  .avisos-lista{display:flex;flex-wrap:wrap;gap:4px 12px;}
+  .avisos-lista label{white-space:nowrap;font-size:13px;}
   .bh-acciones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px;}
   .bh-acciones .btn{min-height:50px;padding:8px 10px;font-size:15px;line-height:1.2;white-space:normal;margin:0;}
   .bahia-card.ocupada[draggable="true"]{cursor:grab;}
@@ -502,6 +510,7 @@
     <div class="usuario-bar">
       <span>Hola, <strong id="usuario-nombre"></strong></span>
       <span id="usuario-rol-chip" class="chip-rol"></span>
+      <button class="btn-avisos" id="btn-avisos" type="button" hidden>🔔 Avisos</button>
       <button class="btn-instalar" id="btn-instalar" type="button" hidden>Instalar app</button>
       <button class="btn-texto" id="btn-logout">Cerrar sesión</button>
     </div>
