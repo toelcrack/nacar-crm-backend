@@ -156,6 +156,7 @@
     var chip = document.getElementById('usuario-rol-chip');
     chip.textContent = usuario.es_supremo ? 'Administrador supremo' : usuario.rol === 'admin' ? 'Administrador' : 'Mecánico / recepción';
     document.getElementById('btn-resumen').hidden = usuario.rol !== 'admin';
+    cargarPendientesMant();
     document.getElementById('btn-taller').hidden = !tieneAcceso('taller');
     document.getElementById('btn-agenda').hidden = !tieneAcceso('agenda');
     document.getElementById('btn-equipo').hidden = usuario.rol !== 'admin';
@@ -232,9 +233,42 @@
   };
 
   // ---------- Vehículos ----------
+  // ---- Mantenciones por registrar (autos que vinieron a mantención y aún no se registran) ----
+  var pendientesMant = [];
+  function cargarPendientesMant() {
+    return api('/vehiculos/pendientes-mantencion').then(function (lista) {
+      pendientesMant = Array.isArray(lista) ? lista : [];
+      var btn = document.getElementById('btn-vehiculos');
+      var n = pendientesMant.length;
+      btn.innerHTML = 'Vehículos' + (n ? '<span class="tab-pend" title="Mantenciones por registrar">⏳ ' + n + '</span>' : '');
+      var caja = document.getElementById('mant-pendientes');
+      if (!n) { caja.hidden = true; caja.innerHTML = ''; return; }
+      caja.hidden = false;
+      caja.innerHTML = '<h3>⏳ Mantenciones por registrar (' + n + ')</h3>' +
+        '<p>Estos autos vinieron a mantención. Registra el aceite y los filtros con sus códigos.</p>' +
+        pendientesMant.map(function (p) {
+          return '<button type="button" class="mant-pend-fila" data-pend-veh="' + p.vehiculo_id + '"><strong>' + escapeHtml(p.patente) + '</strong>' +
+            '<span style="flex:1;min-width:0">' + escapeHtml([p.marca, p.modelo].filter(Boolean).join(' ')) + '</span>' +
+            '<span class="pend-chip">⏳ ' + escapeHtml(p.dia) + (p.entregado ? '' : ' · en taller') + '</span></button>';
+        }).join('');
+      caja.querySelectorAll('[data-pend-veh]').forEach(function (b) {
+        b.onclick = function () {
+          var id = Number(b.getAttribute('data-pend-veh'));
+          document.getElementById('buscar').value = '';
+          abiertoId = null;
+          cargarVehiculos().then(function () {
+            var el = document.getElementById('vcard-' + id);
+            if (el) { toggleVehiculo(id); el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+          });
+        };
+      });
+    }).catch(function () {});
+  }
+
   function cargarVehiculos() {
+    cargarPendientesMant();
     var q = document.getElementById('buscar').value.trim();
-    api('/vehiculos' + (q ? '?q=' + encodeURIComponent(q) : ''))
+    return api('/vehiculos' + (q ? '?q=' + encodeURIComponent(q) : ''))
       .then(function (lista) { renderLista(lista); })
       .catch(function (e) { avisar(e.message || 'No se pudo cargar la lista.', true); });
   }
@@ -273,6 +307,7 @@
         '<div class="vcard-info">' +
           '<div class="vcard-modelo">' + escapeHtml(v.marca) + ' ' + escapeHtml(v.modelo) + (v.anio ? ' · ' + escapeHtml(v.anio) : '') + ' · ' + combustibleTxt + '</div>' +
           '<div class="vcard-cliente">' + escapeHtml(v.cliente_nombre || '') + (v.cliente_correo ? ' · ' + escapeHtml(v.cliente_correo) : '') + '</div>' +
+          (v.mantencion_pendiente ? '<div style="margin-top:4px"><span class="pend-chip">⏳ Mantención por registrar · ' + escapeHtml(v.pendiente_dia || '') + '</span></div>' : '') +
         '</div>' +
         (v.mantenciones_count === undefined ? '' : '<div class="vcard-count">' + v.mantenciones_count + ' mantención' + (v.mantenciones_count === 1 ? '' : 'es') + '</div>') +
       '</div>' +
@@ -322,8 +357,10 @@
         '<div id="form-vehiculo-editar-' + id + '" class="panel" style="margin-top:10px" hidden>' + formVehiculoEditHtml(id, v) + '</div>'
       : '';
 
+    var pendDeEste = pendientesMant.filter(function (p) { return Number(p.vehiculo_id) === Number(id); })[0];
     cont.innerHTML =
       accionesVehiculo +
+      (pendDeEste ? '<div class="mant-pend-aviso">⏳ Falta registrar la mantención del ' + escapeHtml(pendDeEste.dia) + ' (aceite y filtros con sus códigos).</div>' : '') +
       '<div class="historial-label">' + (data.historial_oculto ? 'Mantenciones' : 'Historial de mantenciones') + '</div>' +
       historial +
       '<div style="margin-top:14px">' +
@@ -1131,6 +1168,17 @@
     c.setDate(c.getDate() + diff);
     return c;
   }
+  // Cita de otro día (mañana o más) que el cliente todavía no confirma: el asesor debe encargarse.
+  function citaSinConfirmar(c) {
+    if (c.ingresado_en || c.no_show || c.confirmada_cliente || c.respuesta_cliente === 'no') return false;
+    var d = new Date();
+    var hoy = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return String(c.fecha).slice(0, 10) > hoy;
+  }
+  function chipSinConfirmarHtml(c) {
+    return citaSinConfirmar(c) ? '<span class="cita-estado cita-sinconf">⚠ Sin confirmar</span>' : '';
+  }
+
   function horaCorta(h) {
     if (!h) return '';
     return String(h).slice(0, 5);
@@ -1232,12 +1280,12 @@
       items.forEach(function (it) {
         var c = it.c;
         var ancho = 100 / nLanes;
-        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') +
+        html += '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (citaSinConfirmar(c) ? ' sin-confirmar' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') +
           ' style="top:' + ((it.a - ini) * PX) + 'px;height:' + ((it.b - it.a) * PX - 2) + 'px;left:calc(' + (it.lane * ancho) + '% + 2px);width:calc(' + ancho + '% - 4px)">' +
           (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
           '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : (c.salida_en ? '–' + horaDeTimestamp(c.salida_en) : '')) + '</span>' +
           '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
-          (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller</span>' : (c.ingresado_en && c.salida_en ? '<span class="cita-estado">✓ Entregado</span>' : '')) +
+          (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller</span>' : (c.ingresado_en && c.salida_en ? '<span class="cita-estado">✓ Entregado</span>' : '')) + chipSinConfirmarHtml(c) +
           (c.nota ? '<span class="cita-nota-prev">' + escapeHtml(c.nota) + '</span>' : '') +
           '</button>';
       });
@@ -1378,10 +1426,10 @@
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
             var notaPrev = c.nota ? escapeHtml(c.nota) : '';
-            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
+            return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (citaSinConfirmar(c) ? ' sin-confirmar' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
               (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
-              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
+              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' + chipSinConfirmarHtml(c) +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
               '</button>';
           }).join('');
@@ -3202,8 +3250,8 @@
   function rsLabel(t, bg, icono) {
     return '<div class="rs-label"><span class="rs-ic" style="background:' + bg + '">' + RS_SVG(icono) + '</span>' + t + '</div>';
   }
-  function rsKpi(cls, ic, num, et, sub) {
-    return '<div class="rs-kpi ' + cls + '"><span class="rs-ic">' + RS_SVG(ic, cls === 'rs-k4' ? '#1A1310' : '#fff') + '</span>' +
+  function rsKpi(cls, ic, num, et, sub, ir) {
+    return '<div class="rs-kpi ' + cls + '"' + (ir ? ' data-ir="' + ir + '" role="button" tabindex="0"' : '') + '><span class="rs-ic">' + RS_SVG(ic, cls === 'rs-k4' ? '#1A1310' : '#fff') + '</span>' +
       '<div class="rs-num">' + num + '</div><div class="rs-et">' + et + '</div><div class="rs-sub">' + sub + '</div></div>';
   }
   function fechaLarga(iso) {
@@ -3220,27 +3268,27 @@
         '<div class="rs-fecha">' + fechaLarga(d.fecha) + ' · ' + escapeHtml(d.hora) + '</div></div>' +
         '<button type="button" class="rs-refrescar" id="rs-refrescar" aria-label="Actualizar">' + RS_SVG(RS_P.ref, '#fff').replace('width="18" height="18"', 'width="21" height="21"') + '</button></div>' +
       '<div class="rs-kpis">' +
-        rsKpi('rs-k1', RS_P.car, k.ocupadas, 'En el taller', 'de ' + k.total_bahias + ' elevadores') +
-        rsKpi('rs-k2', RS_P.ok, k.listos, 'Listos', k.listos === 1 ? 'esperando entrega' : 'esperando entrega') +
-        rsKpi('rs-k3', RS_P.cal, k.citas_hoy, 'Citas de hoy', k.por_llegar + (k.por_llegar === 1 ? ' por llegar' : ' por llegar')) +
+        rsKpi('rs-k1', RS_P.car, k.ocupadas, 'En el taller', 'de ' + k.total_bahias + ' elevadores', 'taller') +
+        rsKpi('rs-k2', RS_P.ok, k.listos, 'Listos', 'esperando entrega', 'taller') +
+        rsKpi('rs-k3', RS_P.cal, k.citas_hoy, 'Citas de hoy', k.por_llegar + ' por llegar', 'agenda') +
         rsKpi('rs-k4', RS_P.box, k.entregados, 'Entregados', k.entregados_sin_cita + (k.entregados_sin_cita === 1 ? ' sin cita previa' : ' sin cita previa')) +
       '</div>';
 
     h += '<div>' + rsLabel('Requiere atención', '#CF501A', RS_P.bang) + '<div class="rs-grupo rs-atencion">' +
       (d.atencion.length
-        ? d.atencion.map(function (a) { return '<div class="rs-aviso"><span class="rs-ic">' + RS_SVG(RS_P.bang) + '</span><div>' + a.texto + '</div></div>'; }).join('')
+        ? d.atencion.map(function (a) { return '<div class="rs-aviso"' + (a.ir ? ' data-ir="' + a.ir + '" role="button" tabindex="0"' : '') + '><span class="rs-ic">' + RS_SVG(RS_P.bang) + '</span><div>' + a.texto + '</div></div>'; }).join('')
         : '<div class="rs-ok">Todo en orden por ahora.</div>') +
       '</div></div>';
 
     h += '<div>' + rsLabel('Taller ahora', '#A93308', RS_P.pulse) + '<div class="rs-grupo">' +
       d.bahias.map(function (b) {
-        if (!b.ocupada) return '<div class="rs-bahia-libre"><span>' + escapeHtml(b.nombre) + '</span><span style="font-weight:600">Libre</span></div>';
+        if (!b.ocupada) return '<div class="rs-bahia-libre" data-ir="taller" role="button" tabindex="0"><span>' + escapeHtml(b.nombre) + '</span><span style="font-weight:600">Libre</span></div>';
         var cls = b.listo ? 'rs-gr' : 'rs-or';
         var detalle = b.listo
           ? 'Terminó a las ' + escapeHtml(b.listo_hora)
           : 'Ingresó a las ' + escapeHtml(b.desde);
         if (b.tareas_total) detalle += ' · ' + b.tareas_hechas + ' de ' + b.tareas_total + (b.tareas_total === 1 ? ' tarea' : ' tareas');
-        return '<div class="rs-bahia ' + cls + '"><div class="rs-barra-estado"></div><div class="rs-bahia-cuerpo">' +
+        return '<div class="rs-bahia ' + cls + '" data-ir="taller" data-bahia="' + b.id + '" role="button" tabindex="0"><div class="rs-barra-estado"></div><div class="rs-bahia-cuerpo">' +
           '<div class="rs-peq">' + escapeHtml(b.nombre) + (b.mecanico ? ' · ' + escapeHtml(b.mecanico) : '') + '</div>' +
           '<div>' + (b.listo ? rsPill('gr', 'Listo para entregar') : rsPill('or', 'En trabajo')) + '</div>' +
           '<div style="grid-column:1/3;display:flex;align-items:center;gap:10px"><span class="rs-placa">' + escapeHtml(b.patente) + '</span><span style="font-size:15px;font-weight:500">' + escapeHtml(b.auto || '') + '</span></div>' +
@@ -3251,7 +3299,7 @@
       (d.citas.length
         ? d.citas.map(function (c) {
             var e = RS_ESTADO[c.estado] || ['gy', c.estado];
-            return '<div class="rs-cita"><span class="rs-hora">' + escapeHtml(c.hora) + '</span>' +
+            return '<div class="rs-cita" data-ir="agenda" role="button" tabindex="0"><span class="rs-hora">' + escapeHtml(c.hora) + '</span>' +
               '<span style="min-width:0"><strong style="letter-spacing:.04em">' + escapeHtml(c.patente) + '</strong> <span style="color:#6B5B52">' + escapeHtml(c.auto || '') + '</span></span>' +
               rsPill(e[0], e[1]) + '</div>';
           }).join('')
@@ -3267,6 +3315,18 @@
       '</div>';
     document.getElementById('resumen-contenido').innerHTML = h;
     document.getElementById('rs-refrescar').onclick = cargarResumen;
+    // Tocar un auto / elevador / tarjeta te lleva a la página correspondiente
+    // (si tocas un elevador ocupado, llega ya desplegado).
+    document.querySelectorAll('#resumen-contenido [data-ir]').forEach(function (el) {
+      function ir() {
+        var b = el.getAttribute('data-bahia');
+        if (b) bahiaAbierta[b] = true;
+        mostrarVista(el.getAttribute('data-ir'));
+        window.scrollTo(0, 0);
+      }
+      el.onclick = ir;
+      el.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ir(); } };
+    });
   }
   function cargarResumen() {
     api('/resumen').then(pintarResumen).catch(function (e) {
@@ -3344,12 +3404,18 @@
 
   // ---------- Arrastrar hacia abajo para actualizar (como en cualquier app del celular) ----------
   (function () {
-    var UMBRAL = 80, y0 = null, tirando = false, dist = 0;
+    var UMBRAL = 70, y0 = null, tirando = false, dist = 0;
     var aviso = document.createElement('div');
     aviso.setAttribute('aria-hidden', 'true');
     aviso.style.cssText = 'position:fixed;top:0;left:50%;transform:translate(-50%,-60px);z-index:9999;background:#1A1310;color:#fff;' +
       'font:600 14px Inter,system-ui,sans-serif;padding:10px 18px;border-radius:0 0 14px 14px;pointer-events:none;transition:transform .15s;';
     document.body.appendChild(aviso);
+    // En iPhone, al tirar hacia abajo desde arriba la página "rebota" y el scroll pasa a ser
+    // NEGATIVO (no 0): antes se exigía === 0 y por eso el gesto nunca arrancaba en el celular.
+    function scrollArriba() {
+      var y = Math.max(window.pageYOffset || 0, document.documentElement.scrollTop || 0, document.body.scrollTop || 0);
+      return y <= 1;
+    }
     function vistaActiva() {
       for (var i = 0; i < VISTAS.length; i++) {
         var sec = document.getElementById('vista-' + VISTAS[i]);
@@ -3365,17 +3431,18 @@
       var t = ev.target;
       var pantalla = document.getElementById('pantalla-app');
       var enModal = t.closest && t.closest('.modal, .modal-fondo, dialog, [role="dialog"], textarea, input, select');
-      if (!pantalla || pantalla.hidden || enModal || (window.scrollY || document.documentElement.scrollTop) > 0 || ev.touches.length !== 1) { y0 = null; return; }
+      if (!pantalla || pantalla.hidden || enModal || !scrollArriba() || ev.touches.length !== 1) { y0 = null; return; }
       y0 = ev.touches[0].clientY; tirando = false; dist = 0;
     }, { passive: true });
     document.addEventListener('touchmove', function (ev) {
       if (y0 === null) return;
       dist = ev.touches[0].clientY - y0;
-      if (dist > 10 && (window.scrollY || document.documentElement.scrollTop) === 0) {
+      if (dist > 10 && scrollArriba()) {
         tirando = true;
         mover(Math.min(dist / 2, 70), dist > UMBRAL ? 'Suelta para actualizar' : 'Sigue bajando…');
       } else if (dist <= 0) { tirando = false; mover(0, ''); aviso.style.transform = 'translate(-50%,-60px)'; }
     }, { passive: true });
+    document.addEventListener('touchcancel', function () { y0 = null; tirando = false; aviso.style.transform = 'translate(-50%,-60px)'; }, { passive: true });
     document.addEventListener('touchend', function () {
       if (y0 === null) return;
       var listo = tirando && dist > UMBRAL;

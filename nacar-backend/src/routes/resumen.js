@@ -3,6 +3,8 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
+const { listarPendientes } = require('../pendientes');
+const { listarSinConfirmar } = require('../recordatorios');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
@@ -98,10 +100,10 @@ router.get('/', async (req, res) => {
 
     // ---- Taller ahora
     const bahias = bahiasQ.rows.map((b) => {
-      if (!b.cita_id) return { nombre: b.nombre, tipo: b.tipo, ocupada: false };
+      if (!b.cita_id) return { id: b.id, nombre: b.nombre, tipo: b.tipo, ocupada: false };
       const t = tareasInfo(b.tareas);
       return {
-        nombre: b.nombre, tipo: b.tipo, ocupada: true,
+        id: b.id, nombre: b.nombre, tipo: b.tipo, ocupada: true,
         patente: b.patente, auto: auto(b), mecanico: b.mecanico || null,
         desde: b.desde, listo: !!b.listo_en, listo_hora: b.listo_hora,
         tareas_hechas: t.hechas, tareas_total: t.total,
@@ -128,21 +130,39 @@ router.get('/', async (req, res) => {
     bahiasQ.rows.forEach((b) => {
       if (!b.cita_id) return;
       if (!b.listo_en && b.min_en_taller >= MIN_ELEVADOR_LARGO) {
-        atencion.push({ texto: `<strong>${esc(b.patente)}</strong> lleva ${duracion(b.min_en_taller)} en ${esc(b.nombre)}.` });
+        atencion.push({ ir: 'taller', texto: `<strong>${esc(b.patente)}</strong> lleva ${duracion(b.min_en_taller)} en ${esc(b.nombre)}.` });
       }
       if (b.listo_en && b.min_listo >= MIN_LISTO_SIN_ENTREGAR) {
-        atencion.push({ texto: `<strong>${esc(b.patente)}</strong> está lista hace ${duracion(b.min_listo)} y nadie la ha entregado.` });
+        atencion.push({ ir: 'taller', texto: `<strong>${esc(b.patente)}</strong> está lista hace ${duracion(b.min_listo)} y nadie la ha entregado.` });
       }
     });
     citasQ.rows.forEach((c) => {
       if (c.ingresado_en || c.no_show || c.salida_en) return;
-      if (c.atrasada) atencion.push({ texto: `<strong>${esc(c.patente)}</strong> estaba para las ${esc(c.hora)} y todavía no llega.` });
-      else if (c.respuesta_cliente === 'no') atencion.push({ texto: `El cliente de <strong>${esc(c.patente)}</strong> dice que no puede ir hoy.` });
+      if (c.atrasada) atencion.push({ ir: 'agenda', texto: `<strong>${esc(c.patente)}</strong> estaba para las ${esc(c.hora)} y todavía no llega.` });
+      else if (c.respuesta_cliente === 'no') atencion.push({ ir: 'agenda', texto: `El cliente de <strong>${esc(c.patente)}</strong> dice que no puede ir hoy.` });
     });
     const sinConfirmar = porLlegar.filter((c) => !c.atrasada && !c.confirmada_cliente && c.respuesta_cliente !== 'no').length;
     if (sinConfirmar > 0) {
-      atencion.push({ texto: sinConfirmar === 1 ? '1 cliente no ha confirmado su cita de hoy.' : `${sinConfirmar} clientes no han confirmado su cita de hoy.` });
+      atencion.push({ ir: 'agenda', texto: sinConfirmar === 1 ? '1 cliente no ha confirmado su cita de hoy.' : `${sinConfirmar} clientes no han confirmado su cita de hoy.` });
     }
+
+    // Citas de mañana / próximos días que el cliente aún no confirma
+    try {
+      const sc = await listarSinConfirmar();
+      if (sc.length) {
+        const placas = sc.slice(0, 4).map((x) => `<strong>${esc(x.patente)}</strong> (${esc(x.dia)})`).join(', ') + (sc.length > 4 ? '…' : '');
+        atencion.push({ ir: 'agenda', texto: (sc.length === 1 ? 'Cita sin confirmar: ' : `${sc.length} citas sin confirmar: `) + placas + '.' });
+      }
+    } catch (e) { /* opcional */ }
+
+    // Mantenciones que vinieron y todavía no se registran (en Vehículos)
+    try {
+      const pend = await listarPendientes();
+      if (pend.length) {
+        const placas = pend.slice(0, 4).map((p) => `<strong>${esc(p.patente)}</strong>`).join(', ') + (pend.length > 4 ? '…' : '');
+        atencion.push({ ir: 'vehiculos', texto: (pend.length === 1 ? 'Falta registrar la mantención de ' : `Faltan por registrar ${pend.length} mantenciones: `) + placas + '.' });
+      }
+    } catch (e) { /* opcional */ }
 
     // ---- Actividad
     const actividad = actQ.rows.map((e) => {

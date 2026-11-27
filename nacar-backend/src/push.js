@@ -3,6 +3,7 @@
 // Enviar un aviso NUNCA debe romper la acción que lo origina: todo va con try/catch.
 const webpush = require('web-push');
 const { pool } = require('./db');
+const { pendienteDeCita } = require('./pendientes');
 
 const EVENTOS = {
   agendado: 'Agendó un auto',
@@ -76,7 +77,7 @@ async function avisar(evento, datos, actorId) {
 // Datos legibles de una cita para armar el texto del aviso.
 async function infoCita(citaId) {
   const r = await pool.query(
-    `SELECT c.fecha, c.hora_inicio, v.patente, v.marca, v.modelo, b.nombre AS bahia
+    `SELECT c.fecha, c.hora_inicio, c.nota, c.tareas, (c.fecha > (now() AT TIME ZONE 'America/Santiago')::date) AS futura, v.patente, v.marca, v.modelo, b.nombre AS bahia
      FROM citas c
      LEFT JOIN vehiculos v ON v.id = c.vehiculo_id
      LEFT JOIN bahias b ON b.id = c.bahia_id
@@ -84,6 +85,32 @@ async function infoCita(citaId) {
     [citaId]
   );
   return r.rows[0] || null;
+}
+
+// "A qué viene" el auto, en pocas palabras (ej. "Mantención, alineación"): sale de los trabajos
+// marcados en la orden; si aún no hay, de la nota de la cita.
+function motivoCorto(c) {
+  const tareas = Array.isArray(c.tareas) ? c.tareas.map((t) => String((t && t.nombre) || '')).filter(Boolean) : [];
+  const out = [];
+  let hayMantencion = false;
+  tareas.forEach((n) => {
+    const l = n.toLowerCase();
+    let corto = n;
+    if (l.indexOf('mantención') === 0 || l.indexOf('mantencion') === 0) { corto = 'Mantención'; hayMantencion = true; }
+    else if (l.indexOf('filtro') === 0) corto = 'Filtros';
+    else if (l.indexOf('revisión') === 0 || l.indexOf('revision') === 0) corto = 'Revisión';
+    else if (l.indexOf('diagnóstico') === 0) corto = 'Diagnóstico';
+    if (corto === 'Otro') return;
+    if (out.indexOf(corto) === -1) out.push(corto);
+  });
+  const lista = hayMantencion ? out.filter((x) => x !== 'Filtros') : out;
+  let txt = lista.slice(0, 3).join(', ');
+  if (lista.length > 3) txt += '…';
+  if (!txt && c.nota) {
+    txt = String(c.nota).trim().replace(/\s+/g, ' ');
+    if (txt.length > 40) txt = txt.slice(0, 38).trim() + '…';
+  }
+  return txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : '';
 }
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -103,11 +130,15 @@ async function avisarCita(evento, citaId, actor) {
     const quien = (actor && actor.nombre) || 'Alguien';
     const auto = [c.patente, [c.marca, c.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
     const donde = c.bahia ? ' (' + c.bahia + ')' : '';
+    const motivo = motivoCorto(c);
+    const conMotivo = motivo ? ' Viene por: ' + motivo + '.' : '';
+    let falta = '';
+    if (evento === 'entregado') { try { if (await pendienteDeCita(citaId)) falta = ' Falta registrar la mantención.'; } catch (e) { /* opcional */ } }
     const t = {
-      agendado: { titulo: 'Auto agendado', cuerpo: quien + ' agendó ' + auto + ' para el ' + cuandoTxt(c.fecha, c.hora_inicio) + '.', url: '/#agenda' },
-      ingresado: { titulo: 'Auto en el taller', cuerpo: quien + ' tomó ' + auto + donde + '.', url: '/#taller' },
-      listo: { titulo: 'Auto listo', cuerpo: quien + ' terminó ' + auto + donde + '. Listo para entregar.', url: '/#taller' },
-      entregado: { titulo: 'Auto entregado', cuerpo: quien + ' entregó ' + auto + '.', url: '/#taller' },
+      agendado: { titulo: 'Auto agendado', cuerpo: quien + ' agendó ' + auto + ' para el ' + cuandoTxt(c.fecha, c.hora_inicio) + '.' + conMotivo + (c.futura ? ' Aún sin confirmar: el cliente debe confirmar por WhatsApp.' : ''), url: '/#agenda' },
+      ingresado: { titulo: 'Auto en el taller', cuerpo: quien + ' tomó ' + auto + donde + '.' + conMotivo, url: '/#taller' },
+      listo: { titulo: 'Auto listo', cuerpo: quien + ' terminó ' + auto + donde + '. Listo para entregar.' + conMotivo, url: '/#taller' },
+      entregado: { titulo: 'Auto entregado', cuerpo: quien + ' entregó ' + auto + '.' + falta, url: '/#taller' },
     }[evento];
     if (!t) return;
     await avisar(evento, Object.assign({ tag: String(citaId) }, t), actor && actor.id);
@@ -135,4 +166,4 @@ async function avisarConfirmacion(citaId, resp) {
   }
 }
 
-module.exports = { avisar, avisarCita, avisarConfirmacion, clavePublica, EVENTOS };
+module.exports = { motivoCorto, avisar, avisarCita, avisarConfirmacion, clavePublica, EVENTOS };

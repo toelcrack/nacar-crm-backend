@@ -4,6 +4,7 @@ const { requireAuth, requireAdmin, requireAcceso } = require('../auth');
 const { consultarPatenteNacional } = require('../getapi');
 const { sugerirFiltros } = require('../filtros');
 const { resolverClienteId } = require('../clientes');
+const { listarPendientes } = require('../pendientes');
 
 // Cliente vinculado (agregado 14-sep-2026): "cliente_nombre"/"cliente_correo" siguen viniendo
 // en la respuesta con esos mismos nombres (el frontend no cambia), pero ahora su valor sale del
@@ -26,6 +27,18 @@ function safeInt(v) {
   const n = Number(v);
   return v !== '' && v != null && Number.isFinite(n) ? Math.round(n) : null;
 }
+
+// GET /api/vehiculos/pendientes-mantencion -> autos que vinieron a mantención y aún no tienen la
+// mantención registrada (ver src/pendientes.js). Va antes de '/:id' para que no lo capture.
+router.get('/pendientes-mantencion', async (req, res) => {
+  try {
+    res.json(await listarPendientes());
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('Error listando mantenciones pendientes:', e.message);
+    res.json([]);
+  }
+});
 
 // GET /api/vehiculos?q=texto  -> lista (busca por patente, marca, modelo, cliente)
 router.get('/', async (req, res) => {
@@ -54,6 +67,11 @@ router.get('/', async (req, res) => {
   // El historial de mantenciones lo ve solo el administrador (los mecánicos lo ven por auto,
   // desde Taller, cuando el auto está en el taller — ver /:id/historial-taller).
   if (req.usuario.rol !== 'admin') r.rows.forEach((v) => { delete v.mantenciones_count; });
+  try {
+    const pend = await listarPendientes();
+    const porVeh = new Map(pend.map((p) => [p.vehiculo_id, p]));
+    r.rows.forEach((v) => { const p = porVeh.get(v.id); if (p) { v.mantencion_pendiente = true; v.pendiente_dia = p.dia; } });
+  } catch (e) { /* nunca debe romper la lista */ }
   res.json(r.rows);
 });
 
