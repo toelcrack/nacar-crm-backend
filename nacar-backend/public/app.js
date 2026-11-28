@@ -1266,12 +1266,12 @@
     });
     var alto = (fin - ini) * PX;
 
-    var cols = bahiasList.map(function (b) { return { id: String(b.id), nombre: b.nombre }; });
+    var cols = bahiasList.map(function (b) { return { id: String(b.id), nombre: b.nombre, ocupa: (b.vehiculo_id && calDiaSel === hoyKey) ? b.patente : '' }; });
     if (delDia.some(function (c) { return !c.bahia_id; })) cols.push({ id: '', nombre: 'Sin elevador' });
 
     html += '<div class="td" style="grid-template-columns:52px repeat(' + cols.length + ',minmax(150px,1fr))">';
     html += '<div></div>';
-    cols.forEach(function (c) { html += '<div class="td-cab">' + escapeHtml(c.nombre) + '</div>'; });
+    cols.forEach(function (c) { html += '<div class="td-cab' + (c.ocupa ? ' ocupada' : '') + '">' + escapeHtml(c.nombre) + (c.ocupa ? '<small>● Ocupado · ' + escapeHtml(c.ocupa) + '</small>' : '') + '</div>'; });
 
     html += '<div class="td-eje" style="height:' + alto + 'px">';
     for (var m = ini; m <= fin; m += 60) {
@@ -1293,7 +1293,7 @@
         return { c: c, a: a, b: b, lane: lane };
       });
       var nLanes = Math.max(1, fines.length);
-      html += '<div class="td-col' + (calDiaSel === hoyKey ? ' hoy-col' : '') + '" style="height:' + alto + 'px" data-bahia-id="' + col.id + '" data-bahia-nombre="' + escapeHtml(col.nombre) + '">';
+      html += '<div class="td-col' + (calDiaSel === hoyKey ? ' hoy-col' : '') + (col.ocupa ? ' ocupada' : '') + '" style="height:' + alto + 'px" data-bahia-id="' + col.id + '" data-bahia-nombre="' + escapeHtml(col.nombre) + '">';
       for (var mm = ini; mm < fin; mm += 30) {
         html += '<div class="td-linea' + ((mm - ini) % 60 ? ' media' : '') + '" style="top:' + ((mm - ini) * PX) + 'px"></div>';
       }
@@ -1441,7 +1441,7 @@
       });
 
       bahiasList.forEach(function (b) {
-        html += '<div class="cal-bahia-label">' + escapeHtml(b.nombre) + '</div>';
+        html += '<div class="cal-bahia-label">' + escapeHtml(b.nombre) + (b.vehiculo_id ? '<small class="cal-ocupa">● ' + escapeHtml(b.patente) + '</small>' : '') + '</div>';
         dias.forEach(function (d) {
           var lista = porBahiaDia[b.id + '|' + d.key] || [];
           var chips = lista.map(function (c) {
@@ -1449,7 +1449,7 @@
             return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (citaSinConfirmar(c) ? ' sin-confirmar' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
               (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
-              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' + chipSinConfirmarHtml(c) +
+              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' + (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller</span>' : '') + chipSinConfirmarHtml(c) +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
               '</button>';
           }).join('');
