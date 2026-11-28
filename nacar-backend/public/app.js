@@ -1253,7 +1253,7 @@
     function finDeCita(c, a) {
       var prog = c.hora_fin ? minutosHora(c.hora_fin) : null;
       var fin;
-      if (c.ingresado_en && !c.salida_en) fin = Math.max(prog || 0, minAhora, a + 5); // sin hora de fin: llega hasta la línea roja (ahora)
+      if (c.ingresado_en && !c.salida_en) fin = Math.max(prog || 0, minAhora, a + 40);
       else if (c.ingresado_en && c.salida_en && prog === null) fin = Math.max(minutosHora(horaDeTimestamp(c.salida_en)), a + 40);
       else fin = prog !== null ? prog : a + 60;
       return Math.min(fin, 24 * 60);
@@ -1286,7 +1286,7 @@
       var items = lista.map(function (c) {
         var a = minutosHora(c.hora_inicio);
         var b = finDeCita(c, a);
-        if (b - a < 40 && !(c.ingresado_en && !c.salida_en && !c.hora_fin)) b = a + 40;
+        if (b - a < 40) b = a + 40;
         var lane = 0;
         while (fines[lane] !== undefined && fines[lane] > a) lane++;
         fines[lane] = b;
