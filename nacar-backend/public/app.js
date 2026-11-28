@@ -2054,7 +2054,7 @@
       con.map(function (i) { return '<figure><img src="' + i.f + '" alt="' + escapeHtml(i.t) + '"><figcaption>' + escapeHtml(i.t) + '</figcaption></figure>'; }).join('') +
       '</div></div>';
   }
-  var CSS_FOTOS_INFORME = '.fotos-informe{margin:0 0 16px;page-break-inside:avoid;}.fotos-informe h3{margin:0 0 8px;font-size:13px;}.fotos-fila{display:flex;flex-wrap:wrap;gap:12px;}.fotos-fila figure{margin:0;width:46%;min-width:200px;}.fotos-fila img{width:100%;height:auto;border:1px solid #333;border-radius:4px;display:block;}.fotos-fila figcaption{font-size:11px;color:#555;margin-top:3px;}';
+  var CSS_FOTOS_INFORME = '.fotos-informe{margin:0 0 16px;page-break-inside:avoid;}.fotos-informe h3{margin:0 0 8px;font-size:13px;}.fotos-fila{display:flex;flex-wrap:wrap;gap:10px;}.fotos-fila figure{margin:0;width:200px;}.fotos-fila img{width:200px;height:150px;object-fit:contain;background:#f2f2f2;border:1px solid #333;border-radius:4px;display:block;}.fotos-fila figcaption{font-size:11px;color:#555;margin-top:3px;}';
 
   function construirInformeHtmlTaller(b, v) {
     var logoEl = document.getElementById('logo-header');
