@@ -1581,7 +1581,7 @@
 
   var TAREAS_CATALOGO = [
     'Mantención de aceite', 'Filtro de aceite', 'Filtro de aire', 'Filtro de polen', 'Filtro de combustible',
-    'Frenos',
+    'Frenos delanteros', 'Frenos traseros', 'Revisión de neumáticos',
     'Alineación', 'Balanceo',
     'Cambio neumáticos', 'Rotación de neumáticos',
     'Recarga A/C', 'Bujías',
@@ -1592,6 +1592,36 @@
     'Otro',
   ];
   var TAREAS_DIAGNOSTICO = ['Simulador de camino', 'Revisión tren delantero', 'Revisión tren trasero', 'Diagnóstico embrague'];
+  // "Frenos" (a secas) es el nombre antiguo: cuenta como delanteros + traseros.
+  function esTareaFrenos(n) { return n === 'Frenos' || n === 'Frenos delanteros' || n === 'Frenos traseros'; }
+  function frenosPedidos(tareas) {
+    var t = tareas || [];
+    var viejo = t.some(function (x) { return x.nombre === 'Frenos'; });
+    return {
+      del: viejo || t.some(function (x) { return x.nombre === 'Frenos delanteros'; }),
+      tra: viejo || t.some(function (x) { return x.nombre === 'Frenos traseros'; }),
+    };
+  }
+  var NEUMATICOS_POS = [['di', 'Delantero izquierdo'], ['dd', 'Delantero derecho'], ['ti', 'Trasero izquierdo'], ['td', 'Trasero derecho']];
+  function tareaNeumaticos(tareas) {
+    return (tareas || []).filter(function (x) { return x.nombre === 'Revisión de neumáticos'; })[0] || null;
+  }
+  function renderNeumaticosTaller() {
+    var t = tareaNeumaticos(tallerEstado.tareas);
+    if (!t) return '';
+    var n = t.neumaticos || {};
+    var html = '<p class="campo-label-suelto" style="margin-top:14px">Neumáticos — % de vida útil</p>';
+    NEUMATICOS_POS.forEach(function (p) {
+      var v = n[p[0]];
+      var hay = !(v === '' || v === null || v === undefined);
+      html += '<div class="freno-bloque">' +
+        '<div class="freno-header"><span>' + p[1] + '</span><span class="freno-pct" id="neu-pct-' + p[0] + '">' + (hay ? v + '%' : '—') + '</span></div>' +
+        '<input type="range" min="0" max="100" step="5" value="' + (hay ? Number(v) : 100) + '" class="freno-slider neu-slider" data-neu="' + p[0] + '" />' +
+        '<p class="freno-label" id="neu-label-' + p[0] + '">' + escapeHtml(hay ? labelPastillaPct(v) : 'Sin registrar — mueve la barra') + '</p>' +
+      '</div>';
+    });
+    return html;
+  }
   function requiereDiagnostico(nombre) { return TAREAS_DIAGNOSTICO.indexOf(nombre) !== -1; }
 
   // Escala de 4 tramos (28-oct-2026, segunda ronda): <40% Cambiar ahora, 40-49% Revisar
@@ -1690,8 +1720,8 @@
   }
 
   function renderFrenosTaller() {
-    var frenosSolicitados = (tallerEstado.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
-    if (!frenosSolicitados) return '';
+    var fp = frenosPedidos(tallerEstado.tareas);
+    if (!fp.del && !fp.tra) return renderNeumaticosTaller();
     var esTambor = tallerEstado.pastillasTraTipo === 'tambor';
     var nombreTrasero = esTambor ? 'Balatas traseras' : 'Pastillas traseras';
     // El segundo bloque trasero es "Discos traseros" con pastillas, o "Tambor trasero" con
@@ -1700,11 +1730,14 @@
     // % de ambos campos traseros y había que desbloquearlo aparte — ahora siempre se puede).
     var nombreDiscoTambor = esTambor ? 'Tambor trasero' : 'Discos traseros';
     var html = '<p class="campo-label-suelto">Estado de frenos</p>';
+    if (fp.del) {
     html += renderBloqueFreno('taller-pastillas-del', 'taller-del-pct', 'taller-del-label', 'Pastillas delanteras', tallerEstado.pastillasDel, false, '', 'pastillasDel');
     html += renderSensorYReemplazo('del', tallerEstado.pastillasDelSensor, tallerEstado.pastillasDelReemplazar);
     html += renderBloqueFreno('taller-discos-del', 'taller-disco-del-pct', 'taller-disco-del-label', 'Discos delanteros', tallerEstado.discosDel, false, tallerEstado.discosDelRectificar ? 'Se rectifica (no se cambia)' : '', 'discosDel');
     html += renderBotonRectificar('del', tallerEstado.discosDelRectificar);
     html += renderMedidaDisco('del');
+    }
+    if (fp.tra) {
     html += '<p class="campo-label-suelto" style="margin-top:12px">Tipo de freno trasero</p>' +
       '<div class="toggle-grupo">' +
         '<button type="button" class="toggle-opt' + (!esTambor ? ' activo' : '') + '" data-tipo-tra="pastillas">Pastillas traseras</button>' +
@@ -1715,7 +1748,8 @@
     html += renderBloqueFreno('taller-discos-tra', 'taller-disco-tra-pct', 'taller-disco-tra-label', nombreDiscoTambor, tallerEstado.discosTra, false, tallerEstado.discosTraRectificar ? 'Se rectifica (no se cambia)' : '', 'discosTra');
     html += renderBotonRectificar('tra', tallerEstado.discosTraRectificar);
     html += renderMedidaDisco('tra');
-    return html;
+    }
+    return html + renderNeumaticosTaller();
   }
 
   function renderTareasChipsTaller() {
@@ -1815,7 +1849,21 @@
         }
       };
     });
-    document.querySelectorAll('#taller-frenos-wrap .freno-slider').forEach(function (el) {
+    document.querySelectorAll('#taller-frenos-wrap .neu-slider').forEach(function (el) {
+      var pos = el.getAttribute('data-neu');
+      el.oninput = function () {
+        document.getElementById('neu-pct-' + pos).textContent = el.value + '%';
+        document.getElementById('neu-label-' + pos).textContent = labelPastillaPct(el.value);
+      };
+      el.onchange = function () {
+        var t = tareaNeumaticos(tallerEstado.tareas);
+        if (!t) return;
+        t.neumaticos = t.neumaticos || {};
+        t.neumaticos[pos] = el.value;
+        guardarEstadoTaller(false);
+      };
+    });
+    document.querySelectorAll('#taller-frenos-wrap .freno-slider:not(.neu-slider)').forEach(function (el) {
       el.oninput = function () {
         var pctEl = document.getElementById(el.getAttribute('data-pct-id'));
         var labelEl = document.getElementById(el.getAttribute('data-label-id'));
@@ -2021,12 +2069,18 @@
       var nombreTxt = nombre + (sensor ? ' (con sensor)' : '');
       return '<tr><td>' + escapeHtml(nombreTxt) + '</td><td class="celda-pct">' + pctTxt + '</td><td class="celda-estado-freno">' + escapeHtml(estadoTxt) + '</td></tr>';
     }
-    var hayFrenos = (b.tareas || []).some(function (t) { return t.nombre === 'Frenos'; });
+    var fp = frenosPedidos(b.tareas);
+    var hayFrenos = fp.del || fp.tra;
     var filasFrenos = !hayFrenos ? '' :
-      filaFreno('Pastillas de freno delanteras', b.pastillasDel, false, false, b.pastillasDelSensor, b.pastillasDelReemplazar) +
-      filaFreno('Discos de freno delanteros', b.discosDel, false, b.discosDelRectificar) +
-      filaFreno(nombreTrasero, b.pastillasTra, false, false, b.pastillasTraSensor, b.pastillasTraReemplazar) +
-      filaFreno(nombreDiscosTrasero, b.discosTra, false, b.discosTraRectificar);
+      (fp.del ? filaFreno('Pastillas de freno delanteras', b.pastillasDel, false, false, b.pastillasDelSensor, b.pastillasDelReemplazar) +
+      filaFreno('Discos de freno delanteros', b.discosDel, false, b.discosDelRectificar) : '') +
+      (fp.tra ? filaFreno(nombreTrasero, b.pastillasTra, false, false, b.pastillasTraSensor, b.pastillasTraReemplazar) +
+      filaFreno(nombreDiscosTrasero, b.discosTra, false, b.discosTraRectificar) : '');
+    var tn = tareaNeumaticos(b.tareas), nn = (tn && tn.neumaticos) || {};
+    var filasNeu = !tn ? '' : NEUMATICOS_POS.map(function (p) {
+      var v = nn[p[0]], hay = !(v === '' || v === null || v === undefined);
+      return '<tr><td>Neumático ' + p[1].toLowerCase() + '</td><td class="celda-pct">' + (hay ? v + '%' : '—') + '</td><td class="celda-estado-freno">' + escapeHtml(hay ? labelPastillaPct(v) : '—') + '</td></tr>';
+    }).join('');
 
     var filasTareas = (b.tareas || []).map(function (t) {
       var estadoTxt = (t.estado === 'realizado' ? 'Realizado' : 'Pendiente') + (t.visibilidad === 'cliente' ? ' · Visible al cliente' : '');
@@ -2035,22 +2089,28 @@
     }).join('');
 
     var observaciones = [];
-    if (hayFrenos) {
+    if (fp.del) {
       if (b.pastillasDel !== '') observaciones.push('Pastillas de freno delanteras en ' + b.pastillasDel + '% de vida útil restante (' + labelPastillaPct(b.pastillasDel).toLowerCase() + ').' + (b.pastillasDelSensor ? ' Tiene sensor de desgaste.' : '') + (b.pastillasDelReemplazar ? ' Se marcó para reemplazar.' : ''));
       if (b.discosDelMm) observaciones.push('Discos de freno delanteros: espesor medido ' + b.discosDelMm + ' mm.');
-      if (b.discosTraMm) observaciones.push(nombreDiscosTrasero + ': espesor medido ' + b.discosTraMm + ' mm.');
       if (b.discosDel !== '') observaciones.push(b.discosDelRectificar
         ? 'Discos de freno delanteros en ' + b.discosDel + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : 'Discos de freno delanteros en ' + b.discosDel + '% de vida útil restante (' + labelPastillaPct(b.discosDel).toLowerCase() + ').');
+    }
+    if (fp.tra) {
+      if (b.discosTraMm) observaciones.push(nombreDiscosTrasero + ': espesor medido ' + b.discosTraMm + ' mm.');
       if (b.pastillasTra !== '') observaciones.push(nombreTrasero + ' en ' + b.pastillasTra + '% de vida útil restante (' + labelPastillaPct(b.pastillasTra).toLowerCase() + ').' + (b.pastillasTraSensor ? ' Tiene sensor de desgaste.' : '') + (b.pastillasTraReemplazar ? ' Se marcó para reemplazar.' : ''));
       if (b.discosTra !== '') observaciones.push(b.discosTraRectificar
         ? nombreDiscosTrasero + ' en ' + b.discosTra + '% — se rectifican (rebarbado) en vez de cambiarlos.'
         : nombreDiscosTrasero + ' en ' + b.discosTra + '% de vida útil restante (' + labelPastillaPct(b.discosTra).toLowerCase() + ').');
     }
+    if (tn) NEUMATICOS_POS.forEach(function (p) {
+      var v = nn[p[0]];
+      if (!(v === '' || v === null || v === undefined)) observaciones.push('Neumático ' + p[1].toLowerCase() + ' en ' + v + '% de vida útil (' + labelPastillaPct(v).toLowerCase() + ').');
+    });
     (b.tareas || []).forEach(function (t) {
-      if (t.nombre === 'Frenos' && !t.diagnostico) return;
-      var linea = t.nombre === 'Frenos' ? t.diagnostico : (t.nombre + ': ' + (t.estado === 'realizado' ? 'realizado.' : 'pendiente.'));
-      if (t.nombre !== 'Frenos' && t.diagnostico) linea += ' Diagnóstico: ' + t.diagnostico;
+      if (esTareaFrenos(t.nombre) && !t.diagnostico) return;
+      var linea = esTareaFrenos(t.nombre) ? t.diagnostico : (t.nombre + ': ' + (t.estado === 'realizado' ? 'realizado.' : 'pendiente.'));
+      if (!esTareaFrenos(t.nombre) && t.diagnostico) linea += ' Diagnóstico: ' + t.diagnostico;
       observaciones.push(linea);
     });
     if (b.notaEstado) observaciones.push(b.notaEstado);
@@ -2090,6 +2150,7 @@
         '<tr><td><strong>COMBUSTIBLE:</strong> ' + escapeHtml(combustible) + '</td><td><strong>PATENTE:</strong> ' + escapeHtml(v ? v.patente : '') + '</td><td><strong>KILOMETRAJE:</strong> ' + escapeHtml(km) + '</td></tr>' +
       '</table>' +
       (hayFrenos ? '<table><tr><th>FRENOS</th><th>% VIDA ÚTIL</th><th>ESTADO</th></tr>' + filasFrenos + '</table>' : '') +
+      (filasNeu ? '<table><tr><th>NEUMÁTICOS</th><th>% VIDA ÚTIL</th><th>ESTADO</th></tr>' + filasNeu + '</table>' : '') +
       (hayFrenos ? bloqueFotosHtml([
         { t: 'Disco delantero' + (b.discosDelMm ? ' — ' + b.discosDelMm + ' mm' : ''), f: b.discosDelFoto },
         { t: 'Disco trasero' + (b.discosTraMm ? ' — ' + b.discosTraMm + ' mm' : ''), f: b.discosTraFoto },
