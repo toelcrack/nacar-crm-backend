@@ -761,7 +761,18 @@
     cargarCitasPendientes();
   }
 
-  // Arrastrar un auto que ya está en un elevador a otro elevador/patio libre.
+  // Arrastrar un auto que ya está en un elevador/patio a otro: si el destino está libre lo mueve;
+  // si está ocupado, los dos autos intercambian de lugar (rotar). Con mouse (arrastrar y soltar)
+  // y con el dedo (mantener apretado la tarjeta ~medio segundo y arrastrar).
+  function moverAutoDeBahia(desde, hasta, destinoOcupado) {
+    if (!desde || !hasta || String(desde) === String(hasta)) return;
+    api('/bahias/' + desde + '/mover-auto', { method: 'POST', body: { a_bahia_id: Number(hasta) } })
+      .then(function (r) {
+        avisar(r && r.intercambio ? 'Autos intercambiados de lugar.' : 'Auto cambiado de elevador.');
+        cargarBahias(); cargarCalendarioSemana();
+      })
+      .catch(function (e) { avisar(e.message || 'No se pudo cambiar de elevador.', true); });
+  }
   function ligarArrastreBahias(cont) {
     var origenId = null;
     cont.querySelectorAll('.bahia-card.ocupada[draggable="true"]').forEach(function (card) {
@@ -777,9 +788,9 @@
         cont.querySelectorAll('.bahia-card.drop-sobre').forEach(function (c) { c.classList.remove('drop-sobre'); });
       });
     });
-    cont.querySelectorAll('.bahia-card:not(.ocupada)').forEach(function (card) {
+    cont.querySelectorAll('.bahia-card').forEach(function (card) {
       card.addEventListener('dragover', function (ev) {
-        if (!origenId) return;
+        if (!origenId || card.getAttribute('data-bahia-id') === origenId) return;
         ev.preventDefault();
         ev.dataTransfer.dropEffect = 'move';
         card.classList.add('drop-sobre');
@@ -792,17 +803,56 @@
         card.classList.remove('drop-sobre');
         var desde = origenId || ev.dataTransfer.getData('text/plain');
         origenId = null;
-        if (!desde) return;
-        api('/bahias/' + desde + '/mover-auto', { method: 'POST', body: { a_bahia_id: Number(card.getAttribute('data-bahia-id')) } })
-          .then(function () { avisar('Auto cambiado de elevador.'); cargarBahias(); cargarCalendarioSemana(); })
-          .catch(function (e) { avisar(e.message || 'No se pudo cambiar de elevador.', true); });
+        moverAutoDeBahia(desde, card.getAttribute('data-bahia-id'));
       });
     });
-    // Un elevador ocupado no recibe: avisar por qué en vez de ignorar el soltar.
+
+    // ----- Dedo (celular / tablet): mantener apretado y arrastrar -----
+    var timer = null, activo = null, x0 = 0, y0 = 0, sobre = null;
+    function limpiarSobre() { cont.querySelectorAll('.bahia-card.drop-sobre').forEach(function (c) { c.classList.remove('drop-sobre'); }); }
+    function terminar() {
+      clearTimeout(timer); timer = null;
+      if (activo) activo.classList.remove('arrastrando');
+      limpiarSobre(); activo = null; sobre = null;
+    }
     cont.querySelectorAll('.bahia-card.ocupada').forEach(function (card) {
-      card.addEventListener('dragover', function (ev) {
-        if (origenId && card.getAttribute('data-bahia-id') !== origenId) ev.dataTransfer.dropEffect = 'none';
+      card.addEventListener('touchstart', function (ev) {
+        var ctl = ev.target.closest('button,input,select,textarea,a,label');
+        if (ev.touches.length !== 1 || (ctl && !ctl.classList.contains('bh-resumen'))) return;
+        x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY;
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          activo = card; card.classList.add('arrastrando');
+          if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) { /* ignorar */ } }
+        }, 450);
+      }, { passive: true });
+      card.addEventListener('touchmove', function (ev) {
+        var t = ev.touches[0];
+        if (!activo) {
+          if (Math.abs(t.clientX - x0) > 10 || Math.abs(t.clientY - y0) > 10) { clearTimeout(timer); timer = null; }
+          return;
+        }
+        ev.preventDefault(); // ya está arrastrando: que la pantalla no se desplace
+        var el = document.elementFromPoint(t.clientX, t.clientY);
+        var dest = el && el.closest('.bahia-card');
+        limpiarSobre();
+        sobre = dest && dest !== activo ? dest : null;
+        if (sobre) sobre.classList.add('drop-sobre');
+      }, { passive: false });
+      card.addEventListener('touchend', function () {
+        var desde = activo && activo.getAttribute('data-bahia-id');
+        var hasta = sobre && sobre.getAttribute('data-bahia-id');
+        var movio = !!activo;
+        if (movio) { // que soltar el dedo no cuente como "tocar" para plegar/desplegar la tarjeta
+          var tragar = function (e2) { e2.stopPropagation(); e2.preventDefault(); };
+          card.addEventListener('click', tragar, { capture: true, once: true });
+          setTimeout(function () { card.removeEventListener('click', tragar, true); }, 600);
+        }
+        terminar();
+        if (movio && desde && hasta) moverAutoDeBahia(desde, hasta);
       });
+      card.addEventListener('touchcancel', terminar);
+      card.addEventListener('contextmenu', function (ev) { if (activo || timer) ev.preventDefault(); });
     });
   }
 
