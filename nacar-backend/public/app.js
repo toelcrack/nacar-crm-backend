@@ -1753,7 +1753,10 @@
   }
 
   function renderTareasChipsTaller() {
-    return TAREAS_CATALOGO.map(function (t) {
+    // Trabajos que ya no están en el catálogo (ej. el antiguo "Frenos") siguen apareciendo para poder sacarlos.
+    var extra = (tallerEstado.tareas || []).map(function (x) { return x.nombre; })
+      .filter(function (n, i, a) { return TAREAS_CATALOGO.indexOf(n) === -1 && a.indexOf(n) === i; });
+    return TAREAS_CATALOGO.concat(extra).map(function (t) {
       var activa = (tallerEstado.tareas || []).some(function (x) { return x.nombre === t; });
       return '<button type="button" class="chip-tarea' + (activa ? ' chip-tarea-activo' : '') + '" data-agregar-tarea="' + escapeHtml(t) + '">' + (activa ? '✓ ' : '+ ') + escapeHtml(t) + '</button>';
     }).join('');
