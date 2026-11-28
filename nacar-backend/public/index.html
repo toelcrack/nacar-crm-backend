@@ -288,6 +288,17 @@
   .bh-res-elev{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;color:var(--white);flex:none;}
   .bh-res-placa{flex:1;min-width:0;font-family:'Oswald',sans-serif;font-weight:600;font-size:26px;letter-spacing:2px;line-height:1;color:#1A1310;}
   .bahia-estado-chip.lista{background:#E1F3E5;border-color:#B7DEC0;color:#17592B;font-weight:700;}
+  /* En el PC las tarjetas son angostas (varias por fila): ahí la patente baja a una segunda línea
+     en vez de pisar al tiempo. Cada tarjeta mide su propio ancho (container query). */
+  .bahia-card{container-type:inline-size;}
+  .grid-bahias{align-items:start;}
+  @container (max-width:340px){
+    .bh-resumen{flex-wrap:wrap;row-gap:2px;}
+    .bh-res-elev{order:1;flex:1 1 auto;}
+    .bh-resumen .bahia-estado-chip{order:2;}
+    .bh-res-flecha{order:3;}
+    .bh-res-placa{order:4;flex:1 0 100%;font-size:24px;}
+  }
   .bh-res-flecha{flex:none;font-size:20px;color:#A93308;transition:transform .15s;}
   .bahia-card.abierta .bh-res-flecha{transform:rotate(180deg);}
   .bahia-card.ocupada .bh-detalle{display:none;margin-top:12px;}
