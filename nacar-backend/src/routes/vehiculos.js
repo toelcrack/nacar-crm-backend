@@ -184,7 +184,16 @@ router.get('/:id', async (req, res) => {
   );
   // Los mecánicos no ven el historial general: solo el administrador.
   if (req.usuario.rol !== 'admin') return res.json({ vehiculo: v.rows[0], mantenciones: [], historial_oculto: true });
-  res.json({ vehiculo: v.rows[0], mantenciones: m.rows });
+  // Todas las visitas al taller (no solo mantenciones): sirven para reabrir la orden y el informe de cada una.
+  const vis = await pool.query(
+    `SELECT c.id, c.fecha, c.hora_inicio, c.ingresado_en, c.salida_en, c.kilometraje, c.nota,
+            COALESCE((SELECT array_agg(t->>'nombre') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(c.tareas) = 'array' THEN c.tareas ELSE '[]'::jsonb END) t), '{}') AS trabajos
+     FROM citas c
+     WHERE c.vehiculo_id = $1 AND COALESCE(c.no_show, false) = false AND (c.ingresado_en IS NOT NULL OR c.fecha <= (now() AT TIME ZONE 'America/Santiago')::date)
+     ORDER BY c.fecha DESC, c.hora_inicio DESC, c.id DESC`,
+    [id]
+  );
+  res.json({ vehiculo: v.rows[0], mantenciones: m.rows, visitas: vis.rows });
 });
 
 // GET /api/vehiculos/:id/historial-taller -> historial de mantenciones de ESTE auto para el

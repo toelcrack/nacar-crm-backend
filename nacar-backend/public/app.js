@@ -357,17 +357,36 @@
         '<div id="form-vehiculo-editar-' + id + '" class="panel" style="margin-top:10px" hidden>' + formVehiculoEditHtml(id, v) + '</div>'
       : '';
 
+    var visitasHtml = '';
+    if (!data.historial_oculto) {
+      var DIAS3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+      visitasHtml = '<div class="historial-label" style="margin-top:18px">Historial de visitas al taller</div>' +
+        ((data.visitas || []).length
+          ? '<ul class="historial">' + data.visitas.map(function (x) {
+              var f = String(x.fecha).slice(0, 10).split('-');
+              var d = new Date(Number(f[0]), Number(f[1]) - 1, Number(f[2]));
+              var trabajos = (x.trabajos || []).filter(Boolean).join(', ') || (x.nota || 'Sin trabajos anotados');
+              return '<li class="visita-item"><div class="visita-info"><b>' + DIAS3[d.getDay()] + ' ' + f[2] + '/' + f[1] + '/' + f[0] + '</b>' +
+                (x.kilometraje ? ' · ' + escapeHtml(x.kilometraje) + ' km' : '') +
+                '<span class="visita-trab">' + escapeHtml(trabajos) + '</span></div>' +
+                '<div class="visita-acc"><button type="button" class="btn-texto" data-visita-informe="' + x.id + '">Informe</button>' +
+                '<button type="button" class="btn-texto" data-visita-orden="' + x.id + '">Orden</button></div></li>';
+            }).join('') + '</ul>'
+          : '<p class="sin-mant">Este auto aún no tiene visitas al taller.</p>');
+    }
     var pendDeEste = pendientesMant.filter(function (p) { return Number(p.vehiculo_id) === Number(id); })[0];
     cont.innerHTML =
       accionesVehiculo +
       (pendDeEste ? '<div class="mant-pend-aviso">⏳ Falta registrar la mantención del ' + escapeHtml(pendDeEste.dia) + ' (aceite y filtros con sus códigos).</div>' : '') +
       '<div class="historial-label">' + (data.historial_oculto ? 'Mantenciones' : 'Historial de mantenciones') + '</div>' +
-      historial +
+      historial + visitasHtml +
       '<div style="margin-top:14px">' +
         '<button class="btn btn-secundario" id="btn-toggle-mant-' + id + '" type="button">+ Registrar mantención</button>' +
       '</div>' +
       '<div id="form-mant-' + id + '" class="panel" style="margin-top:12px" hidden>' + formMantHtml(id, v.combustible) + '</div>';
 
+    cont.querySelectorAll('[data-visita-informe]').forEach(function (b) { b.onclick = function () { abrirInformeDeCita(b.getAttribute('data-visita-informe')); }; });
+    cont.querySelectorAll('[data-visita-orden]').forEach(function (b) { b.onclick = function () { abrirOrdenTrabajo(b.getAttribute('data-visita-orden')); }; });
     document.getElementById('btn-toggle-mant-' + id).onclick = function () { mostrarFormMant(id); };
     ligarFiltros(id);
     ligarSelectNuevo('m-tecnico-' + id);
@@ -2006,7 +2025,21 @@
     tallerEstado = null;
     tallerVehiculo = null;
     api('/citas/' + citaId).then(function (c) {
-      tallerEstado = {
+      tallerEstado = estadoDesdeCita(c);
+      tallerVehiculo = vehiculoDesdeCita(c);
+      renderTallerEstado();
+    }).catch(function (e) {
+      avisar(e.message || 'No se pudo cargar el estado del auto.', true);
+    });
+  }
+  function vehiculoDesdeCita(c) {
+    return {
+      patente: c.patente, marca: c.marca, modelo: c.modelo, anio: c.anio,
+      combustible: c.combustible, clienteNombre: c.cliente_nombre,
+    };
+  }
+  function estadoDesdeCita(c) {
+      return {
         citaId: c.id,
         kilometraje: c.kilometraje || '',
         pastillasDel: c.pastillas_del || '',
@@ -2030,14 +2063,14 @@
         notaEstado: c.nota_estado || '',
         tareas: Array.isArray(c.tareas) ? c.tareas : [],
       };
-      tallerVehiculo = {
-        patente: c.patente, marca: c.marca, modelo: c.modelo, anio: c.anio,
-        combustible: c.combustible, clienteNombre: c.cliente_nombre,
-      };
-      renderTallerEstado();
-    }).catch(function (e) {
-      avisar(e.message || 'No se pudo cargar el estado del auto.', true);
-    });
+  }
+
+  // Reabre el informe de una visita antigua (desde Vehículos).
+  function abrirInformeDeCita(citaId) {
+    abrirVisorDoc('<p style="font-family:Arial;margin:40px;">Cargando informe…</p>');
+    api('/citas/' + citaId).then(function (c) {
+      abrirVisorDoc(construirInformeHtmlTaller(estadoDesdeCita(c), vehiculoDesdeCita(c)));
+    }).catch(function (e) { cerrarVisorDoc(false); avisar(e.message || 'No se pudo cargar el informe.', true); });
   }
 
   function fechaInformeHoy() {
