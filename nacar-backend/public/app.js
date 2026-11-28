@@ -1305,7 +1305,7 @@
           (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
           '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : (c.salida_en ? '–' + horaDeTimestamp(c.salida_en) : '')) + '</span>' +
           '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' +
-          (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller</span>' : (c.ingresado_en && c.salida_en ? '<span class="cita-estado">✓ Entregado</span>' : '')) + chipSinConfirmarHtml(c) +
+          (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller' + (c.desde_txt ? ' desde ' + c.desde_txt : '') + '</span>' : (c.ingresado_en && c.salida_en ? '<span class="cita-estado">✓ Entregado</span>' : '')) + chipSinConfirmarHtml(c) +
           (c.nota ? '<span class="cita-nota-prev">' + escapeHtml(c.nota) + '</span>' : '') +
           '</button>';
       });
@@ -1417,8 +1417,12 @@
         if (!b.cita_id || !b.ingresado_en || !b.vehiculo_id) return;
         var yaHoy = citas.some(function (c) { return String(c.id) === String(b.cita_id) && String(c.fecha).slice(0, 10) === hoyKey; });
         if (yaHoy || (desde > hoyKey || hasta < hoyKey)) return;
-        citas = citas.concat([{ id: b.cita_id, bahia_id: b.id, bahia_nombre: b.nombre, fecha: hoyKey,
-          hora_inicio: horaDeTimestamp(b.ingresado_en), hora_fin: null, nota: b.nota, atrasado: b.atrasado,
+        // Si entró otro día, el bloque de hoy arranca a la apertura del taller y dice desde cuándo está.
+        var ingD = new Date(b.ingresado_en), otroDia = ymd(ingD) !== hoyKey;
+        var aperturaMin = ({ 1: 540, 2: 540, 3: 540, 4: 540, 5: 540, 6: 600 })[new Date().getDay()] || 600;
+        var desdeTxt = otroDia ? (['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][ingD.getDay()] + ' ' + pad2(ingD.getDate()) + '/' + pad2(ingD.getMonth() + 1) + ' ' + horaDeTimestamp(b.ingresado_en)) : '';
+        citas = citas.concat([{ id: b.cita_id, bahia_id: b.id, bahia_nombre: b.nombre, fecha: hoyKey, desde_txt: desdeTxt,
+          hora_inicio: otroDia ? hhmm(aperturaMin) : horaDeTimestamp(b.ingresado_en), hora_fin: null, nota: b.nota, atrasado: b.atrasado,
           ingresado_en: b.ingresado_en, salida_en: null, listo_en: b.listo_en,
           vehiculo_id: b.vehiculo_id, patente: b.patente, marca: b.marca, modelo: b.modelo, cliente_nombre: b.cliente_nombre }]);
       });
@@ -1460,7 +1464,7 @@
             return '<button type="button" class="cita-chip' + (c.atrasado ? ' atrasado' : '') + (c.no_show ? ' no-show' : '') + (c.confirmada_cliente ? ' confirmada' : '') + (c.respuesta_cliente === 'no' ? ' atrasado' : '') + (citaSinConfirmar(c) ? ' sin-confirmar' : '') + (c.ingresado_en && !c.salida_en ? ' en-taller' : '') + (c.ingresado_en && c.salida_en ? ' entregado' : '') + '" data-cita-id="' + c.id + '"' + ((c.ingresado_en || c.no_show || !puedeEditarAgenda()) ? '' : ' draggable="true"') + '>' +
               (c.atrasado ? '⚠️ ' : '') + (c.no_show ? '🚫 ' : '') + (c.confirmada_cliente ? '✓ ' : '') + (c.respuesta_cliente === 'no' ? '✗ ' : '') +
               '<span class="cita-hora">' + horaCorta(c.hora_inicio) + (c.hora_fin ? '–' + horaCorta(c.hora_fin) : '') + '</span>' +
-              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' + (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller</span>' : '') + chipSinConfirmarHtml(c) +
+              '<span class="cita-patente">' + escapeHtml(c.patente) + '</span>' + (c.ingresado_en && !c.salida_en ? '<span class="cita-estado">● En el taller' + (c.desde_txt ? ' desde ' + c.desde_txt : '') + '</span>' : '') + chipSinConfirmarHtml(c) +
               (notaPrev ? '<span class="cita-nota-prev">' + notaPrev + '</span>' : '') +
               '</button>';
           }).join('');
