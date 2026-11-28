@@ -941,7 +941,7 @@
       '<button type="button" class="bh-resumen" id="bahia-toggle-' + b.id + '" aria-expanded="' + abierta + '">' +
         '<span class="bh-res-elev">' + escapeHtml(b.nombre) + '</span>' +
         '<span class="bh-res-placa">' + escapeHtml(b.patente) + '</span>' +
-        '<span class="bahia-estado-chip ' + (b.listo_en ? 'lista' : 'ocupada') + '">' + chipTxt + '</span>' +
+        '<span class="bahia-estado-chip ' + (b.listo_en ? 'lista' : 'ocupada') + '" title="Tiempo en horario hábil del taller">' + chipTxt + '</span>' +
         '<span class="bh-res-flecha" aria-hidden="true">▾</span></button>' +
       '<div class="bh-detalle">' +
       '<button type="button" class="bh-patente" id="bahia-orden-' + b.id + '" aria-label="Ver orden de trabajo de ' + escapeHtml(b.patente) + '">' +
@@ -971,8 +971,28 @@
   var bahiaAbierta = {}; // bahia id -> true si el detalle está desplegado (se recuerda al refrescar)
   var histCache = {};  // vehiculo id -> mantenciones (solo lectura, ya sin costos para no administradores)
   var MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  // Horario hábil del taller (hora de Chile): lun–jue 9:00–18:30, vie 9:00–18:00, sáb 10:00–14:00,
+  // domingo cerrado. El tiempo "en el taller" cuenta solo dentro de ese horario.
+  var VENTANAS_HABILES = { 1: [540, 1110], 2: [540, 1110], 3: [540, 1110], 4: [540, 1110], 5: [540, 1080], 6: [600, 840] };
+  var fmtChile = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  function minutosLocalesChile(fecha) {
+    var p = {};
+    fmtChile.formatToParts(fecha).forEach(function (x) { p[x.type] = x.value; });
+    return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)) / 86400000 * 1440 + Number(p.hour) * 60 + Number(p.minute);
+  }
+  function minutosHabilesDesde(iso) {
+    var a = minutosLocalesChile(new Date(iso)), b = minutosLocalesChile(new Date());
+    var total = 0;
+    for (var d = Math.floor(a / 1440); d <= Math.floor(b / 1440); d++) {
+      var v = VENTANAS_HABILES[new Date(d * 86400000).getUTCDay()];
+      if (!v) continue;
+      var fin = Math.min(b, d * 1440 + v[1]), ini = Math.max(a, d * 1440 + v[0]);
+      if (fin > ini) total += fin - ini;
+    }
+    return total;
+  }
   function tiempoDesde(iso) {
-    var min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+    var min = Math.max(0, Math.round(minutosHabilesDesde(iso)));
     if (min < 60) return min + ' min';
     var h = Math.floor(min / 60), m = min % 60;
     return h + ' h' + (m ? ' ' + m + ' min' : '');

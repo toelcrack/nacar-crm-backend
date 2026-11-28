@@ -4,6 +4,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const { listarPendientes } = require('../pendientes');
+const { minutosHabiles } = require('../horario');
 const { listarSinConfirmar } = require('../recordatorios');
 
 const router = express.Router();
@@ -42,8 +43,7 @@ router.get('/', async (req, res) => {
                 c.id AS cita_id, c.tareas, c.listo_en, c.nota,
                 v.patente, v.marca, v.modelo,
                 ${HM('c.ingresado_en')} AS desde, ${HM('c.listo_en')} AS listo_hora,
-                EXTRACT(EPOCH FROM (now() - c.ingresado_en)) / 60 AS min_en_taller,
-                EXTRACT(EPOCH FROM (now() - c.listo_en)) / 60 AS min_listo,
+                c.ingresado_en AS ingresado_raw, c.listo_en AS listo_raw,
                 u.nombre AS mecanico
          FROM bahias b
          LEFT JOIN LATERAL (
@@ -129,11 +129,14 @@ router.get('/', async (req, res) => {
     const atencion = [];
     bahiasQ.rows.forEach((b) => {
       if (!b.cita_id) return;
+      // Solo cuentan las horas hábiles del taller (lun–jue 9–18:30, vie 9–18, sáb 10–14).
+      b.min_en_taller = minutosHabiles(b.ingresado_raw);
+      b.min_listo = b.listo_raw ? minutosHabiles(b.listo_raw) : 0;
       if (!b.listo_en && b.min_en_taller >= MIN_ELEVADOR_LARGO) {
-        atencion.push({ ir: 'taller', texto: `<strong>${esc(b.patente)}</strong> lleva ${duracion(b.min_en_taller)} en ${esc(b.nombre)}.` });
+        atencion.push({ ir: 'taller', texto: `<strong>${esc(b.patente)}</strong> lleva ${duracion(b.min_en_taller)} hábiles en ${esc(b.nombre)}.` });
       }
       if (b.listo_en && b.min_listo >= MIN_LISTO_SIN_ENTREGAR) {
-        atencion.push({ ir: 'taller', texto: `<strong>${esc(b.patente)}</strong> está lista hace ${duracion(b.min_listo)} y nadie la ha entregado.` });
+        atencion.push({ ir: 'taller', texto: `<strong>${esc(b.patente)}</strong> está lista hace ${duracion(b.min_listo)} hábiles y nadie la ha entregado.` });
       }
     });
     citasQ.rows.forEach((c) => {
