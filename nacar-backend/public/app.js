@@ -1410,8 +1410,19 @@
     var cont = document.getElementById('grid-calendario');
     Promise.all([api('/bahias'), api('/citas?desde=' + desde + '&hasta=' + hasta)]).then(function (r) {
       var bahiasList = r[0], citas = r[1];
-      calCitasCache = citas;
       var hoyKey = ymd(new Date());
+      // Un auto que está AHORA en un elevador siempre se ve en la agenda de hoy, aunque su cita
+      // original sea de otro día u hora (ej. cita agendada otro día que se ingresó hoy).
+      bahiasList.forEach(function (b) {
+        if (!b.cita_id || !b.ingresado_en || !b.vehiculo_id) return;
+        var yaHoy = citas.some(function (c) { return String(c.id) === String(b.cita_id) && String(c.fecha).slice(0, 10) === hoyKey; });
+        if (yaHoy || (desde > hoyKey || hasta < hoyKey)) return;
+        citas = citas.concat([{ id: b.cita_id, bahia_id: b.id, bahia_nombre: b.nombre, fecha: hoyKey,
+          hora_inicio: horaDeTimestamp(b.ingresado_en), hora_fin: null, nota: b.nota, atrasado: b.atrasado,
+          ingresado_en: b.ingresado_en, salida_en: null, listo_en: b.listo_en,
+          vehiculo_id: b.vehiculo_id, patente: b.patente, marca: b.marca, modelo: b.modelo, cliente_nombre: b.cliente_nombre }]);
+      });
+      calCitasCache = citas;
       var diasCorto = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
       var dias = [];
       for (var i = 0; i < 7; i++) {
