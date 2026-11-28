@@ -1842,11 +1842,18 @@
       b.onclick = function () {
         var nombre = b.getAttribute('data-agregar-tarea');
         tallerEstado.tareas = tallerEstado.tareas || [];
-        var existe = tallerEstado.tareas.some(function (t) { return t.nombre === nombre; });
-        if (!existe) {
+        var idx = -1;
+        tallerEstado.tareas.forEach(function (t, i) { if (idx < 0 && t.nombre === nombre) idx = i; });
+        if (idx < 0) {
           tallerEstado.tareas.push({ nombre: nombre, estado: 'pendiente', visibilidad: 'interno', diagnostico: '', fotos: [] });
-          guardarEstadoTaller(true);
+        } else {
+          // Tocar un trabajo ya marcado lo saca de la orden (por si se marcó por error).
+          var t0 = tallerEstado.tareas[idx];
+          var conDatos = t0.diagnostico || (t0.fotos && t0.fotos.length) || (t0.neumaticos && Object.keys(t0.neumaticos).length);
+          if (conDatos && !window.confirm('"' + nombre + '" ya tiene datos cargados (diagnóstico, fotos o %). ¿Sacarlo de la orden igual?')) return;
+          tallerEstado.tareas.splice(idx, 1);
         }
+        guardarEstadoTaller(true);
       };
     });
     document.querySelectorAll('#taller-frenos-wrap .neu-slider').forEach(function (el) {
